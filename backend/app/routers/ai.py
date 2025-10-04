@@ -63,8 +63,8 @@ async def llm(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/generate-image")
-async def generate_image(
+@router.post("/image")
+async def image(
     prompt: str = Form(...),
     image_urls: Optional[str] = Form(None),
     images: Optional[List[UploadFile]] = File(None),
