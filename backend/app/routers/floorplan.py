@@ -2,6 +2,7 @@ from fastapi import APIRouter, UploadFile, File, Form
 from fastapi.responses import Response
 from app.services.image_generation_service import ImageGenerationService
 from app.services.minglun_service import MingLunService
+from app.services.boundary_extraction_service import BoundaryExtractionService
 
 router = APIRouter(prefix="/floorplan", tags=["floorplan"])
 
@@ -24,8 +25,10 @@ async def extract_objects(floorplan: UploadFile = File(...)):
     service = MingLunService()
     objects_data = await service.extract_objects(floorplan_bytes)
 
-    return {"objects": objects_data}
+    boundary_service = BoundaryExtractionService()
+    boundaries_data = await boundary_service.extract_boundaries(floorplan_bytes)
 
+    return {"objects": objects_data, "boundaries": boundaries_data}
 
 @router.post("/revise")
 async def revise_floorplan(
