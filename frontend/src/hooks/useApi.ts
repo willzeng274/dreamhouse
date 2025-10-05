@@ -31,11 +31,31 @@ export function useExtractObjects() {
 
 	return useMutation({
 		mutationFn: async (floorplanFile: File) => {
-			return await api.floorplan.extract(floorplanFile);
+			console.log("Starting extraction mutation...");
+			const result = await api.floorplan.extract(floorplanFile);
+			console.log("Extraction mutation completed");
+			return result;
 		},
 		onSuccess: (data) => {
+			console.log("✅ Extract objects SUCCESS - response:", data);
+			console.log("Objects count:", data.objects?.length);
+			console.log("Boundaries count:", data.boundaries?.length);
+
+			if (!data || !data.objects) {
+				console.error("❌ No objects in response:", data);
+				throw new Error("No objects returned from API");
+			}
+
+			console.log("Setting objects in store...");
 			setFloorplanObjects(data.objects);
 			setFloorplanBoundaries(data.boundaries || []);
+			console.log("✅ Successfully set objects and boundaries in store");
+		},
+		onError: (error) => {
+			console.error("❌ Error extracting objects:", error);
+		},
+		onSettled: () => {
+			console.log("Extraction mutation settled (completed or errored)");
 		},
 	});
 }
