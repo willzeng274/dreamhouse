@@ -35,3 +35,4 @@ backend/*.pt
 
 # Logs
 *.log
+.venv/
