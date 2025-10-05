@@ -22,8 +22,16 @@ interface SelectionBox {
 
 interface Annotation {
 	id: string;
-	x: number;
-	y: number;
+	// Screen coordinates for display (absolute positioning)
+	screenX: number;
+	screenY: number;
+	// Image coordinates for backend (normalized or pixel coords)
+	bbox: {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+	};
 	text: string;
 }
 
@@ -47,7 +55,9 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 	const [tempAnnotationPos, setTempAnnotationPos] = useState<{
 		x: number;
 		y: number;
+		bbox: { x: number; y: number; width: number; height: number };
 	} | null>(null);
+	const [downloadNotification, setDownloadNotification] = useState(false);
 	const containerRef = useRef<HTMLDivElement>(null);
 	const imgRef = useRef<HTMLImageElement>(null);
 
@@ -78,7 +88,108 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 		}
 	}, [sketchDataUrl]);
 
-	const handleRegenerate = () => {
+	// Coordinate transformation helpers
+	const screenToImageCoords = (
+		screenX: number,
+		screenY: number
+	): { x: number; y: number } => {
+		if (!imgRef.current || !containerRef.current) {
+			return { x: 0, y: 0 };
+		}
+
+		const rect = containerRef.current.getBoundingClientRect();
+		const relativeX = screenX - rect.left;
+		const relativeY = screenY - rect.top;
+
+		// Account for transform (pan and zoom)
+		const imageX = (relativeX - transform.offsetX) / transform.scale;
+		const imageY = (relativeY - transform.offsetY) / transform.scale;
+
+		return { x: imageX, y: imageY };
+	};
+
+	const imageToScreenCoords = (
+		imageX: number,
+		imageY: number
+	): { x: number; y: number } => {
+		if (!containerRef.current) {
+			return { x: 0, y: 0 };
+		}
+
+		const rect = containerRef.current.getBoundingClientRect();
+
+		// Apply transform (zoom and pan)
+		const screenX = imageX * transform.scale + transform.offsetX + rect.left;
+		const screenY = imageY * transform.scale + transform.offsetY + rect.top;
+
+		return { x: screenX, y: screenY };
+	};
+
+	const createAnnotatedImage = async (): Promise<Blob | null> => {
+		if (!floorplanDataUrl || annotations.length === 0) return null;
+
+		console.log("=== Creating Annotated Image ===");
+		console.log("Number of annotations:", annotations.length);
+		console.log("Annotations:", annotations);
+
+		// Create a canvas to draw the annotated image
+		const canvas = document.createElement("canvas");
+		const ctx = canvas.getContext("2d");
+		if (!ctx) return null;
+
+		// Load image from data URL
+		const img = new Image();
+		img.src = floorplanDataUrl;
+
+		// Wait for image to load
+		await new Promise<void>((resolve, reject) => {
+			img.onload = () => resolve();
+			img.onerror = () => reject(new Error("Failed to load image"));
+		});
+
+		console.log("Image loaded. Dimensions:", img.width, "x", img.height);
+
+		canvas.width = img.width;
+		canvas.height = img.height;
+
+		// Draw the original image
+		ctx.drawImage(img, 0, 0);
+
+		// Draw bounding boxes
+		ctx.strokeStyle = "#E07B47";
+		ctx.lineWidth = 5;
+		ctx.fillStyle = "rgba(224, 123, 71, 0.3)";
+
+		console.log("Drawing bounding boxes:");
+		annotations.forEach((annotation, index) => {
+			const { bbox } = annotation;
+			console.log(`  Box ${index}:`, bbox, "Text:", annotation.text);
+
+			// Draw filled rectangle
+			ctx.fillRect(bbox.x, bbox.y, bbox.width, bbox.height);
+			// Draw border
+			ctx.strokeRect(bbox.x, bbox.y, bbox.width, bbox.height);
+
+			// Draw text label
+			ctx.fillStyle = "#E07B47";
+			ctx.font = "bold 24px sans-serif";
+			const textY = bbox.y > 30 ? bbox.y - 10 : bbox.y + bbox.height + 25;
+			ctx.fillText(annotation.text, bbox.x + 5, textY);
+			ctx.fillStyle = "rgba(224, 123, 71, 0.3)";
+		});
+
+		console.log("Finished drawing boxes on canvas");
+
+		// Convert canvas to blob
+		return new Promise((resolve) => {
+			canvas.toBlob((blob) => {
+				console.log("Canvas converted to blob:", blob?.size, "bytes");
+				resolve(blob);
+			}, "image/png");
+		});
+	};
+
+	const handleRegenerate = async () => {
 		if (!floorplanBlob) return;
 
 		// Collect all annotations into a single instruction
@@ -87,11 +198,80 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 				? annotations.map((a) => a.text).join("; ")
 				: "improve the floorplan";
 
-		const file = new File([floorplanBlob], "floorplan.png", {
-			type: "image/png",
-		});
+		let fileToSend: File;
 
-		reviseFloorplan.mutate({ floorplanFile: file, instruction });
+		// If we have annotations, create annotated image with bounding boxes
+		if (annotations.length > 0) {
+			const annotatedBlob = await createAnnotatedImage();
+			if (annotatedBlob) {
+				fileToSend = new File([annotatedBlob], "floorplan_annotated.png", {
+					type: "image/png",
+				});
+
+				// Verbose logging for debugging
+				console.log("=== REFINE STAGE: Sending to Backend ===");
+				console.log("Image file:", fileToSend.name, fileToSend.size, "bytes");
+
+				// AUTO-DOWNLOAD the annotated image for debugging
+				const dataUrl = URL.createObjectURL(annotatedBlob);
+				const downloadLink = document.createElement('a');
+				downloadLink.href = dataUrl;
+				downloadLink.download = `annotated_floorplan_${Date.now()}.png`;
+				document.body.appendChild(downloadLink);
+				downloadLink.click();
+				document.body.removeChild(downloadLink);
+				URL.revokeObjectURL(dataUrl);
+
+				console.log("✅ Downloaded annotated image to your Downloads folder");
+				console.log("Check the downloaded image to verify bounding boxes are visible");
+
+				// Show notification
+				setDownloadNotification(true);
+				setTimeout(() => setDownloadNotification(false), 5000);
+
+				// Also log base64 for completeness
+				const reader = new FileReader();
+				reader.onload = (e) => {
+					const base64DataUrl = e.target?.result as string;
+					console.log("Image data URL (base64):", base64DataUrl);
+				};
+				reader.readAsDataURL(fileToSend);
+
+				if (imgRef.current) {
+					console.log("Image dimensions:", {
+						width: imgRef.current.naturalWidth,
+						height: imgRef.current.naturalHeight,
+					});
+				}
+
+				console.log("Bounding boxes:");
+				console.table(
+					annotations.map((a) => ({
+						id: a.id,
+						text: a.text,
+						x: Math.round(a.bbox.x),
+						y: Math.round(a.bbox.y),
+						width: Math.round(a.bbox.width),
+						height: Math.round(a.bbox.height),
+					}))
+				);
+
+				console.log("Instruction text:", instruction);
+				console.log("=========================================");
+			} else {
+				// Fallback to original image
+				fileToSend = new File([floorplanBlob], "floorplan.png", {
+					type: "image/png",
+				});
+			}
+		} else {
+			// No annotations, use original image
+			fileToSend = new File([floorplanBlob], "floorplan.png", {
+				type: "image/png",
+			});
+		}
+
+		reviseFloorplan.mutate({ floorplanFile: fileToSend, instruction });
 		setAnnotations([]); // Clear annotations after regenerating
 	};
 
@@ -159,8 +339,41 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 
 			// Only show input if there's an actual selection (not just a click)
 			if (width > 5 && height > 5) {
-				setTempAnnotationPos({ x: e.clientX, y: e.clientY });
-				setShowAnnotationInput(true);
+				// Store the selection box for later conversion to annotation
+				const rect = containerRef.current?.getBoundingClientRect();
+				if (rect) {
+					// Convert selection box to image coordinates
+					// selectionBox coords are container-relative, convert to screen coords
+					const minX = Math.min(selectionBox.startX, selectionBox.endX);
+					const minY = Math.min(selectionBox.startY, selectionBox.endY);
+
+					// Convert container-relative coords to screen coords for screenToImageCoords
+					const screenMinX = minX + rect.left;
+					const screenMinY = minY + rect.top;
+					const screenMaxX = screenMinX + width;
+					const screenMaxY = screenMinY + height;
+
+					const topLeftImage = screenToImageCoords(screenMinX, screenMinY);
+					const bottomRightImage = screenToImageCoords(screenMaxX, screenMaxY);
+
+					console.log("Selection:", {
+						container: { minX, minY, width, height },
+						screen: { screenMinX, screenMinY, screenMaxX, screenMaxY },
+						image: { topLeftImage, bottomRightImage },
+					});
+
+					setTempAnnotationPos({
+						x: e.clientX,
+						y: e.clientY,
+						bbox: {
+							x: topLeftImage.x,
+							y: topLeftImage.y,
+							width: bottomRightImage.x - topLeftImage.x,
+							height: bottomRightImage.y - topLeftImage.y,
+						},
+					});
+					setShowAnnotationInput(true);
+				}
 			}
 
 			setSelectionBox(null);
@@ -173,8 +386,9 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 		if (annotationText.trim() && tempAnnotationPos) {
 			const newAnnotation: Annotation = {
 				id: Date.now().toString(),
-				x: tempAnnotationPos.x,
-				y: tempAnnotationPos.y,
+				screenX: tempAnnotationPos.x,
+				screenY: tempAnnotationPos.y,
+				bbox: tempAnnotationPos.bbox,
 				text: annotationText,
 			};
 			setAnnotations([...annotations, newAnnotation]);
@@ -188,28 +402,37 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 		setAnnotations(annotations.filter((a) => a.id !== id));
 	};
 
-	const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-		e.preventDefault();
-
+	// Wheel handler for zoom (using native event to prevent passive warning)
+	useEffect(() => {
 		const container = containerRef.current;
 		if (!container) return;
 
-		const rect = container.getBoundingClientRect();
-		const mouseX = e.clientX - rect.left;
-		const mouseY = e.clientY - rect.top;
+		const handleWheel = (e: WheelEvent) => {
+			e.preventDefault();
 
-		const zoomIntensity = 0.1;
-		const delta = e.deltaY > 0 ? -zoomIntensity : zoomIntensity;
-		const newScale = Math.max(0.1, Math.min(5, transform.scale + delta));
+			const rect = container.getBoundingClientRect();
+			const mouseX = e.clientX - rect.left;
+			const mouseY = e.clientY - rect.top;
 
-		const scaleChange = newScale / transform.scale;
+			const zoomIntensity = 0.03; // Reduced from 0.1 for less sensitivity
+			const delta = e.deltaY > 0 ? -zoomIntensity : zoomIntensity;
+			const newScale = Math.max(0.1, Math.min(5, transform.scale + delta));
 
-		setTransform({
-			scale: newScale,
-			offsetX: mouseX - (mouseX - transform.offsetX) * scaleChange,
-			offsetY: mouseY - (mouseY - transform.offsetY) * scaleChange,
-		});
-	};
+			const scaleChange = newScale / transform.scale;
+
+			setTransform({
+				scale: newScale,
+				offsetX: mouseX - (mouseX - transform.offsetX) * scaleChange,
+				offsetY: mouseY - (mouseY - transform.offsetY) * scaleChange,
+			});
+		};
+
+		container.addEventListener("wheel", handleWheel, { passive: false });
+
+		return () => {
+			container.removeEventListener("wheel", handleWheel);
+		};
+	}, [transform]);
 
 	const handleZoomIn = () => {
 		setTransform((prev) => ({
@@ -292,11 +515,10 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 									onClick={() =>
 										setShowSelectArea(!showSelectArea)
 									}
-									className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-										showSelectArea
-											? "bg-[#1A1815] text-white"
-											: "bg-[#F5F3EF] text-[#6B6862] hover:bg-[#E5E2DA]"
-									}`}
+									className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${showSelectArea
+										? "bg-[#1A1815] text-white"
+										: "bg-[#F5F3EF] text-[#6B6862] hover:bg-[#E5E2DA]"
+										}`}
 								>
 									{showSelectArea
 										? "Cancel Annotation"
@@ -308,8 +530,8 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 									className='px-4 py-2 rounded-lg text-sm font-medium bg-[#F5F3EF] text-[#6B6862] hover:bg-[#E5E2DA] transition-colors disabled:opacity-50'
 								>
 									{reviseFloorplan.isPending
-										? "Regenerating..."
-										: "Regenerate"}
+										? "Applying..."
+										: "Apply Changes"}
 								</button>
 								<button
 									onClick={onPrevious}
@@ -343,13 +565,12 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 								onMouseMove={handleMouseMove}
 								onMouseUp={handleMouseUp}
 								onMouseLeave={handleMouseUp}
-								onWheel={handleWheel}
 								style={{
 									cursor: showSelectArea
 										? "crosshair"
 										: isPanning
-										? "grabbing"
-										: "grab",
+											? "grabbing"
+											: "grab",
 								}}
 							>
 								<img
@@ -388,30 +609,57 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 									</div>
 								)}
 
-								{annotations.map((annotation) => (
-									<div
-										key={annotation.id}
-										className='absolute pointer-events-auto'
-										style={{
-											left: annotation.x,
-											top: annotation.y,
-										}}
-									>
-										<div className='relative bg-[#E07B47] text-white px-3 py-2 rounded-lg text-sm shadow-lg min-w-[120px]'>
-											<button
-												onClick={() =>
-													handleDeleteAnnotation(
-														annotation.id
-													)
-												}
-												className='absolute -top-2 -right-2 w-5 h-5 bg-[#EF4444] rounded-full text-white text-xs hover:bg-[#DC2626] transition-colors'
+								{/* Persistent bounding boxes with text labels */}
+								{annotations.map((annotation) => {
+									const topLeft = imageToScreenCoords(
+										annotation.bbox.x,
+										annotation.bbox.y
+									);
+									const bottomRight = imageToScreenCoords(
+										annotation.bbox.x + annotation.bbox.width,
+										annotation.bbox.y + annotation.bbox.height
+									);
+
+									const screenWidth = bottomRight.x - topLeft.x;
+									const screenHeight = bottomRight.y - topLeft.y;
+
+									return (
+										<div key={`bbox-${annotation.id}`}>
+											{/* Bounding box rectangle */}
+											<div
+												className='absolute pointer-events-none border-2 border-[#E07B47] bg-[#E07B47]/10'
+												style={{
+													left: topLeft.x - containerRef.current!.getBoundingClientRect().left,
+													top: topLeft.y - containerRef.current!.getBoundingClientRect().top,
+													width: screenWidth,
+													height: screenHeight,
+												}}
+											/>
+											{/* Annotation text bubble */}
+											<div
+												className='absolute pointer-events-auto z-10'
+												style={{
+													left: annotation.screenX,
+													top: annotation.screenY,
+												}}
 											>
-												×
-											</button>
-											{annotation.text}
+												<div className='relative bg-[#E07B47] text-white px-3 py-2 rounded-lg text-sm shadow-lg min-w-[120px]'>
+													<button
+														onClick={() =>
+															handleDeleteAnnotation(
+																annotation.id
+															)
+														}
+														className='absolute -top-2 -right-2 w-5 h-5 bg-[#EF4444] rounded-full text-white text-xs hover:bg-[#DC2626] transition-colors'
+													>
+														×
+													</button>
+													{annotation.text}
+												</div>
+											</div>
 										</div>
-									</div>
-								))}
+									);
+								})}
 
 								{showAnnotationInput && tempAnnotationPos && (
 									<div
@@ -470,6 +718,17 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 					</div>
 				</div>
 			</div>
+
+			{/* Download Notification */}
+			{downloadNotification && (
+				<div className='fixed top-4 right-4 z-50 bg-[#1A1815] text-white px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3 animate-fade-in'>
+					<div className='w-3 h-3 bg-green-500 rounded-full animate-pulse'></div>
+					<div>
+						<p className='font-medium'>Annotated Image Downloaded</p>
+						<p className='text-sm text-gray-300'>Check your Downloads folder to verify bounding boxes</p>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }

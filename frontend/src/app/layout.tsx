@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-	title: "Architecture Visualizer",
+	title: "Dream House",
 	description:
 		"Transform sketches into photorealistic 3D architectural visualizations",
 };
