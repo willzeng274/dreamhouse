@@ -12,7 +12,7 @@ organized by service and functionality for easy maintenance and updates.
 
 # Method: generate_floorplan (line 8-11)
 # Purpose: Convert a hand-drawn sketch into a top-down architectural floorplan
-FLOORPLAN_GENERATION_PROMPT = "Generate a top-down architectural floorplan from this sketch"
+FLOORPLAN_GENERATION_PROMPT = """convert this very rough sketch into a fully realized, top-down floorplan, with proper graphics, lots of distinct furniture, architecture, rooms, etc. make sure that the final output is a proper, real floorplan. Never overlap pieces of furniture, ex. absolutely NO RUGS OR CARPET. NO TEXT OR LABELS. everything should be low res black and white. Use only straight lines"""
 
 # Method: revise_floorplan (line 13-16)
 # Purpose: Revise an existing floorplan based on user instructions
@@ -34,7 +34,9 @@ def get_floorplan_revision_prompt(instruction: str) -> str:
 
 # Method: generate_photorealistic (line 18-21)
 # Purpose: Generate a photorealistic rendering from a floorplan
-PHOTOREALISTIC_GENERATION_PROMPT = "Generate a photorealistic top-down interior image from this floorplan"
+PHOTOREALISTIC_GENERATION_PROMPT = (
+    "Generate a photorealistic top-down interior image from this floorplan"
+)
 
 
 # ============================================================================

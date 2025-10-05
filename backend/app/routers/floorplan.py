@@ -1,7 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, Form
 from fastapi.responses import Response
 from app.services.image_generation_service import ImageGenerationService
-from app.services.minglun_service import MingLunService
+from app.services.furniture_extraction_service import FurnitureExtractionService
 
 router = APIRouter(prefix="/floorplan", tags=["floorplan"])
 
@@ -21,7 +21,7 @@ async def generate_floorplan(sketch: UploadFile = File(...)):
 async def extract_objects(floorplan: UploadFile = File(...)):
     floorplan_bytes = await floorplan.read()
 
-    service = MingLunService()
+    service = FurnitureExtractionService()
     objects_data = await service.extract_objects(floorplan_bytes)
 
     return {"objects": objects_data}
@@ -29,13 +29,14 @@ async def extract_objects(floorplan: UploadFile = File(...)):
 
 @router.post("/revise")
 async def revise_floorplan(
-    annotated_floorplan: UploadFile = File(...),
-    instruction: str = Form(...)
+    annotated_floorplan: UploadFile = File(...), instruction: str = Form(...)
 ):
     floorplan_bytes = await annotated_floorplan.read()
     mime_type = annotated_floorplan.content_type or "image/png"
 
     service = ImageGenerationService()
-    revised_floorplan_bytes = await service.revise_floorplan(floorplan_bytes, mime_type, instruction)
+    revised_floorplan_bytes = await service.revise_floorplan(
+        floorplan_bytes, mime_type, instruction
+    )
 
     return Response(content=revised_floorplan_bytes, media_type="image/png")
