@@ -3,6 +3,9 @@
 # Debug output from classification
 backend/classification_debug/
 
+# Debug output from boundary extraction
+backend/boundary_debug/
+
 # Python
 __pycache__/
 *.pyc

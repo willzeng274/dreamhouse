@@ -32,6 +32,32 @@ export interface FloorplanObject {
 	[key: string]: any;
 }
 
+export interface BoundaryObject {
+	id: string;
+	class: string; // "wall", "window", "door"
+	position: {
+		x: number;
+		y: number;
+	};
+	dimensions: {
+		width: number;
+		height: number;
+	};
+	confidence: number;
+	bbox_normalized: {
+		x1: number;
+		y1: number;
+		x2: number;
+		y2: number;
+	};
+	bbox_pixels: {
+		x1: number;
+		y1: number;
+		x2: number;
+		y2: number;
+	};
+}
+
 export interface UnityScene {
 	objects: any[];
 	[key: string]: any;

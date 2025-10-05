@@ -28,12 +28,13 @@ class BoundaryExtractionService:
         )
         self.model_id = model_id
 
-    async def extract_boundaries(self, floorplan_bytes: bytes) -> List[Dict[str, Any]]:
+    async def extract_boundaries(self, floorplan_bytes: bytes, debug: bool = False) -> List[Dict[str, Any]]:
         """
         Extract and classify boundary elements (walls, doors, windows) from a floorplan image.
         
         Args:
             floorplan_bytes: Image data as bytes
+            debug: If True, save debug outputs (JSON and annotated overlay) to boundary_debug/
             
         Returns:
             List of boundary detections in the format:
@@ -47,17 +48,19 @@ class BoundaryExtractionService:
                 "bbox_pixels": {"x1": int, "y1": int, "x2": int, "y2": int}
             }
         """
+        print("START BOUNDARY DETECTION")
         # Convert bytes to numpy array
         nparr = np.frombuffer(floorplan_bytes, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
         if image is None:
+            print("EARLY RETURN BOUNDARY DETECTION")
             raise ValueError("Could not decode image from bytes")
         
         img_height, img_width = image.shape[:2]
         
-        # Run inference
-        result = self.client.infer(floorplan_bytes, model_id=self.model_id)
+        # Run inference - pass numpy array instead of bytes
+        result = self.client.infer(image, model_id=self.model_id)
         
         # Parse predictions into structured format
         detections_list = []
@@ -114,6 +117,38 @@ class BoundaryExtractionService:
                     }
                 }
                 detections_list.append(detection)
+        
+        # Save debug outputs if requested
+        if debug:
+            debug_dir = "./backend/boundary_debug"
+            os.makedirs(debug_dir, exist_ok=True)
+            
+            # Save JSON detections
+            json_path = os.path.join(debug_dir, "wall_detections.json")
+            with open(json_path, "w") as f:
+                json.dump(detections_list, f, indent=2)
+            print(f"💾 Saved wall detections to {json_path}")
+            
+            # Create and save annotated overlay
+            detections_sv = sv.Detections.from_inference(result)
+            
+            # Create annotators
+            mask_annotator = sv.MaskAnnotator()
+            box_annotator = sv.BoxAnnotator(thickness=2)
+            label_annotator = sv.LabelAnnotator()
+            
+            # Annotate image
+            annotated_image = image.copy()
+            annotated_image = mask_annotator.annotate(annotated_image, detections_sv)
+            annotated_image = box_annotator.annotate(annotated_image, detections_sv)
+            annotated_image = label_annotator.annotate(annotated_image, detections_sv)
+            
+            # Save overlay
+            overlay_path = os.path.join(debug_dir, "segmented_overlay.png")
+            cv2.imwrite(overlay_path, annotated_image)
+            print(f"✅ Saved annotated overlay to {overlay_path}")
+                
+        print("END BOUNDARY DETECTION")
         
         return detections_list
 
@@ -176,7 +211,11 @@ def detect_walls(image_path, model_id="cubicasa5k-2-qpmsa/6"):
     return detections_list
 
 if __name__ == "__main__":
-    image_path = "./test/floor-plan-5.png"
+    # Create output directory if it doesn't exist
+    output_dir = "./backend/boundary_debug"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    image_path = "./backend/boundary_debug/floor-plan-5.png"
     detections = detect_walls(image_path)
     
     # Print JSON output
@@ -187,7 +226,7 @@ if __name__ == "__main__":
     print("\n")
     
     # Save to file
-    output_file = "./test/wall_detections.json"
+    output_file = "./backend/boundary_debug/wall_detections.json"
     with open(output_file, "w") as f:
         json.dump(detections, f, indent=2)
     print(f"💾 Saved wall detections to {output_file}")
@@ -264,7 +303,7 @@ if __name__ == "__main__":
     image = label_annotator.annotate(image, detections_sv)
     
     # Save overlay as PNG
-    out_path = "./test/segmented_overlay.png"
+    out_path = "./backend/boundary_debug/segmented_overlay.png"
     cv2.imwrite(out_path, image)
     print("\n" + "=" * 80)
     print(f"✅ Saved annotated overlay to {out_path}")

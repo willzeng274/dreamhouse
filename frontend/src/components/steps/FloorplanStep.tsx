@@ -40,10 +40,12 @@ export default function FloorplanStep({
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
 	const floorplanImageRef = useRef<HTMLImageElement | null>(null);
+	const extractionInitiatedRef = useRef<string | null>(null);
 
 	const floorplanBlob = useAppStore((state) => state.floorplanBlob);
 	const floorplanDataUrl = useAppStore((state) => state.floorplanDataUrl);
 	const floorplanObjects = useAppStore((state) => state.floorplanObjects);
+	const floorplanBoundaries = useAppStore((state) => state.floorplanBoundaries);
 	const extractObjects = useExtractObjects();
 
 	// Load floorplan image
@@ -65,12 +67,19 @@ export default function FloorplanStep({
 			floorplanObjects.length === 0 &&
 			!extractObjects.isPending
 		) {
-			const file = new File([floorplanBlob], "floorplan.png", {
-				type: "image/png",
-			});
-			extractObjects.mutate(file);
+			// Create a unique identifier for this blob
+			const blobId = `${floorplanBlob.size}-${floorplanBlob.type}`;
+			
+			// Only extract if we haven't already initiated extraction for this blob
+			if (extractionInitiatedRef.current !== blobId) {
+				extractionInitiatedRef.current = blobId;
+				const file = new File([floorplanBlob], "floorplan.png", {
+					type: "image/png",
+				});
+				extractObjects.mutate(file);
+			}
 		}
-	}, [floorplanBlob]);
+	}, [floorplanBlob, floorplanObjects.length, extractObjects.isPending]);
 
 	const [showFurnitureModal, setShowFurnitureModal] = useState(false);
 	const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
@@ -414,6 +423,78 @@ export default function FloorplanStep({
 			}
 		});
 
+		// Draw boundary elements (walls, doors, windows) - non-draggable
+		// Render in order: walls first, then doors, then windows (for proper z-ordering)
+		
+		// First pass: Draw walls
+		floorplanBoundaries.forEach((boundary) => {
+			if (!boundary.bbox_normalized || !img || boundary.class !== "wall") return;
+
+			// Convert normalized bbox to canvas coordinates
+			const x1 = boundary.bbox_normalized.x1 * img.width;
+			const y1 = boundary.bbox_normalized.y1 * img.height;
+			const x2 = boundary.bbox_normalized.x2 * img.width;
+			const y2 = boundary.bbox_normalized.y2 * img.height;
+			const width = x2 - x1;
+			const height = y2 - y1;
+
+			// Dark brown for walls - fully filled
+			ctx.fillStyle = "rgba(61, 43, 31, 0.8)"; // dark brown
+			ctx.fillRect(x1, y1, width, height);
+
+			// Draw boundary outline
+			ctx.strokeStyle = "#3D2B1F"; // dark brown
+			ctx.lineWidth = 1;
+			ctx.setLineDash([]); // solid line
+			ctx.strokeRect(x1, y1, width, height);
+		});
+
+		// Second pass: Draw doors
+		floorplanBoundaries.forEach((boundary) => {
+			if (!boundary.bbox_normalized || !img || boundary.class !== "door") return;
+
+			// Convert normalized bbox to canvas coordinates
+			const x1 = boundary.bbox_normalized.x1 * img.width;
+			const y1 = boundary.bbox_normalized.y1 * img.height;
+			const x2 = boundary.bbox_normalized.x2 * img.width;
+			const y2 = boundary.bbox_normalized.y2 * img.height;
+			const width = x2 - x1;
+			const height = y2 - y1;
+
+			// Tan/brown for doors - fully filled
+			ctx.fillStyle = "rgba(139, 90, 43, 0.7)"; // tan
+			ctx.fillRect(x1, y1, width, height);
+
+			// Draw boundary outline
+			ctx.strokeStyle = "#8B5A2B"; // darker tan
+			ctx.lineWidth = 2;
+			ctx.setLineDash([]); // solid line
+			ctx.strokeRect(x1, y1, width, height);
+		});
+
+		// Third pass: Draw windows (on top of everything)
+		floorplanBoundaries.forEach((boundary) => {
+			if (!boundary.bbox_normalized || !img || boundary.class !== "window") return;
+
+			// Convert normalized bbox to canvas coordinates
+			const x1 = boundary.bbox_normalized.x1 * img.width;
+			const y1 = boundary.bbox_normalized.y1 * img.height;
+			const x2 = boundary.bbox_normalized.x2 * img.width;
+			const y2 = boundary.bbox_normalized.y2 * img.height;
+			const width = x2 - x1;
+			const height = y2 - y1;
+
+			// Light blue for windows - fully filled
+			ctx.fillStyle = "rgba(135, 206, 235, 0.7)"; // light blue
+			ctx.fillRect(x1, y1, width, height);
+
+			// Draw boundary outline
+			ctx.strokeStyle = "#87CEEB"; // sky blue
+			ctx.lineWidth = 2;
+			ctx.setLineDash([]); // solid line
+			ctx.strokeRect(x1, y1, width, height);
+		});
+
 		ctx.restore();
 		ctx.restore();
 	};
@@ -427,6 +508,7 @@ export default function FloorplanStep({
 		selectedFurnitureId,
 		draggingId,
 		floorplanObjects,
+		floorplanBoundaries,
 	]);
 
 	// Initialize canvas size
@@ -880,15 +962,24 @@ export default function FloorplanStep({
 												: "grab",
 										}}
 									/>
-									{floorplanObjects.length > 0 && (
+									{(floorplanObjects.length > 0 || floorplanBoundaries.length > 0) && (
 										<div className='absolute top-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg px-4 py-2 shadow-lg'>
 											<p className='text-sm text-[#1A1815] font-medium'>
 												{floorplanObjects.length}{" "}
 												furniture item
 												{floorplanObjects.length !== 1
 													? "s"
-													: ""}{" "}
-												detected
+													: ""}
+												{floorplanBoundaries.length > 0 && (
+													<>
+														<br />
+														{floorplanBoundaries.length}{" "}
+														boundary element
+														{floorplanBoundaries.length !== 1
+															? "s"
+															: ""}
+													</>
+												)}
 											</p>
 										</div>
 									)}
