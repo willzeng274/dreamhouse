@@ -30,6 +30,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+rectangle_pixel_dist_lenience = 5
+color_similarity_threshold = 50
+
 @dataclass
 class FurnitureObject:
     """Represents a detected furniture object with its properties."""
@@ -85,11 +88,27 @@ class FurnitureDetectionPipeline:
             # Create the prompt for adding red rectangles (same as test.py)
             prompt = """
 For each piece of furniture in this image, generate a filled box of non-black and
-non-white color overlaping the entire furniture object. Each piece of furniture
-should have a different color. Ensure the boxes overlapping all furniture objects
-do not touch or overlap each other across multiple furniture pieces. Fill the
-entire box with the same color, do not preserve the furniture image/outline 
+non-white color overlaping the entire furniture object. 
+
+Each piece of furniture should have a different color. Ensure the boxes overlapping 
+all furniture objects do not touch or overlap each other across multiple furniture 
+pieces. 
+
+Fill the entire box with the same color, do not preserve the furniture image/outline 
 itself, I should only see a bunch of colorful boxes in a floor plan.
+
+Be careful to separate the different furniture pieces that are close together.
+E.g. For a table with chairs tucked in, make sure the table and each chair all have
+distinctly different colors.
+
+DRAW OVER THE OUTLINE OF THE FURNITURE OBJECTS. IN ORDER TO SEGMENT THERE CANNOT BE 
+BORDERS OF DIFFERENT COLOR WITHIN THE SAME FURNITURE OBJECT.
+
+Do not add any colors to floors or carpets. Only the furniture itself should have the
+colors.
+
+For a bed, the pillows and blankets should all be colored under the same mask.
+Same with couches and the cushions on them.
 """
             print("Sending request to nano banana API...")
             
@@ -149,7 +168,7 @@ itself, I should only see a bunch of colorful boxes in a floor plan.
         # Find all non-grayscale colors
         visited = np.zeros((height, width), dtype=bool)
         rectangles = []
-        
+                
         for y in range(height):
             for x in range(width):
                 if visited[y, x]:
@@ -208,8 +227,8 @@ itself, I should only see a bunch of colorful boxes in a floor plan.
                     max_y = max(max_y, curr_y)
                     
                     # Check all pixels within 5-pixel radius
-                    for dx in range(-5, 6):
-                        for dy in range(-5, 6):
+                    for dx in range(-rectangle_pixel_dist_lenience, rectangle_pixel_dist_lenience+1):
+                        for dy in range(-rectangle_pixel_dist_lenience, rectangle_pixel_dist_lenience+1):
                             if dx == 0 and dy == 0:
                                 continue
                             
@@ -226,8 +245,9 @@ itself, I should only see a bunch of colorful boxes in a floor plan.
                                 
                                 # Check if neighbor has similar color (within tolerance)
                                 color_diff = abs(nr - target_color[0]) + abs(ng - target_color[1]) + abs(nb - target_color[2])
-                                if color_diff < 50:  # Color similarity threshold
+                                if color_diff < color_similarity_threshold:  # Color similarity threshold
                                     visited[ny, nx] = True
+                                    # print(f"Found similar color pixel at ({nx}, {ny}) with RGB({nr}, {ng}, {nb}) {color_code}●{reset_code}")
                                     queue.append((nx, ny))
                 
                 # Only consider components with reasonable size
@@ -284,6 +304,7 @@ itself, I should only see a bunch of colorful boxes in a floor plan.
         return image_with_rectangles
     
     def categorize_furniture_with_gemini(self, cropped_image: np.ndarray) -> str:
+        return ""
         """
         Step 3: Use Gemini to categorize furniture in the cropped image.
         """
@@ -408,7 +429,7 @@ def main():
     print("✓ Pipeline initialized")
     
     # Load the floor plan image
-    floor_plan_path = "./pipeline/floor-plan-1.png"
+    floor_plan_path = "./pipeline/floor-plan-4.png"
     print(f"Loading floor plan image: {floor_plan_path}")
     
     try:
