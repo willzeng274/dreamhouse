@@ -5,8 +5,10 @@ from inference_sdk import InferenceHTTPClient
 import json
 import os
 from typing import List, Dict, Any
-from app.config import get_settings
+from dotenv import load_dotenv
 
+# Load environment variables from .env file
+load_dotenv()
 
 class BoundaryExtractionService:
     """Service for extracting and classifying boundary elements (walls, doors, windows) from floorplan images."""
@@ -18,11 +20,11 @@ class BoundaryExtractionService:
         Args:
             model_id: Roboflow model ID to use for inference
         """
-        settings = get_settings()
+        self.roboflow_api_key = os.environ.get("ROBOFLOW_API_KEY")
         
         self.client = InferenceHTTPClient(
             api_url="https://serverless.roboflow.com",
-            api_key=settings.roboflow_api_key
+            api_key=self.roboflow_api_key
         )
         self.model_id = model_id
 
@@ -174,10 +176,6 @@ def detect_walls(image_path, model_id="cubicasa5k-2-qpmsa/6"):
     return detections_list
 
 if __name__ == "__main__":
-    # Load environment variables from .env file
-    from dotenv import load_dotenv
-    load_dotenv()
-    
     image_path = "./test/floor-plan-5.png"
     detections = detect_walls(image_path)
     
