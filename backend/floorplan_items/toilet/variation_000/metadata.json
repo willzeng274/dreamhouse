@@ -1,0 +1,13 @@
+{
+  "model_mesh": {
+    "url": "https://v3b.fal.media/files/b/monkey/N94SIROPNybOpd3_U44-I_model.glb",
+    "content_type": "application/octet-stream",
+    "file_name": "model.glb",
+    "file_size": 1363344
+  },
+  "timings": {
+    "prepare": 2.414302434772253e-05,
+    "generation": 2.6121949329972267,
+    "export": 13.150728819018696
+  }
+}

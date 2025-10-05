@@ -17,8 +17,10 @@ class MingLunService:
             "name": string (furniture_name),
             "position": {"x": float, "y": float},
             "dimensions": {"width": float, "height": float},
+            "rotation": float (degrees),
+            "model": int (model variation index),
             "bbox_normalized": {...},
-            "confidence": string,
+            "bbox_pixels": {...},
             ...
         }
         """
@@ -29,36 +31,26 @@ class MingLunService:
             )
         )
 
-        # Transform to frontend format
+        # The classified_objects already have the correct format from segmentation_service
+        # Just need to add id field, type field, and ensure correct types
         frontend_objects = []
-        for obj in classified_objects:
-            classification = obj.get("classification", {})
-            bbox_norm = obj.get("bbox_normalized", {})
-            dims_norm = obj.get("dimensions_normalized", {})
-
-            # Calculate center position from bbox
-            center_x = (bbox_norm.get("x1", 0) + bbox_norm.get("x2", 0)) / 2
-            center_y = (bbox_norm.get("y1", 0) + bbox_norm.get("y2", 0)) / 2
-
+        for i, obj in enumerate(classified_objects):
             frontend_obj = {
-                "id": f"obj_{obj.get('id', 0)}",
-                "type": classification.get("furniture_id", "other"),
-                "name": classification.get("furniture_name", "Unknown"),
+                "id": f"obj_{i}",
+                "type": obj.get("name", "other"),
+                "name": obj.get("name", "other"),
+                "model": obj.get("model", 0),
                 "position": {
-                    "x": float(center_x),
-                    "y": float(center_y),
+                    "x": float(obj["position"]["x"]),
+                    "y": float(obj["position"]["y"]),
                 },
                 "dimensions": {
-                    "width": float(dims_norm.get("width", 0)),
-                    "height": float(dims_norm.get("height", 0)),
+                    "width": float(obj["dimensions"]["width"]),
+                    "height": float(obj["dimensions"]["height"]),
                 },
-                "bbox_normalized": bbox_norm,
+                "rotation": int(obj.get("rotation", 0)),
+                "bbox_normalized": obj.get("bbox_normalized", {}),
                 "bbox_pixels": obj.get("bbox_pixels", {}),
-                "confidence": classification.get("confidence", "unknown"),
-                "reasoning": classification.get("reasoning", ""),
-                "aspect_ratio": classification.get(
-                    "aspect_ratio", {"value": 1.0, "typical": "any", "description": ""}
-                ),
             }
             frontend_objects.append(frontend_obj)
 

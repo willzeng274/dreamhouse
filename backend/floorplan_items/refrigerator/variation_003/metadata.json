@@ -1,0 +1,13 @@
+{
+  "model_mesh": {
+    "url": "https://v3b.fal.media/files/b/monkey/C34Oy2_HHKB94yesBiuor_model.glb",
+    "content_type": "application/octet-stream",
+    "file_name": "model.glb",
+    "file_size": 1284704
+  },
+  "timings": {
+    "prepare": 2.164099714718759e-05,
+    "generation": 2.7775962409941712,
+    "export": 11.34876727500523
+  }
+}

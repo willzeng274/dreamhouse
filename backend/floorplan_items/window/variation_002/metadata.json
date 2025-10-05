@@ -1,0 +1,13 @@
+{
+  "model_mesh": {
+    "url": "https://v3b.fal.media/files/b/zebra/rOWtzxTV-dAPaac9KP3Mo_model.glb",
+    "content_type": "application/octet-stream",
+    "file_name": "model.glb",
+    "file_size": 1407268
+  },
+  "timings": {
+    "prepare": 1.0006129741668701e-05,
+    "generation": 3.372206870932132,
+    "export": 27.16329462500289
+  }
+}

@@ -38,6 +38,10 @@ PHOTOREALISTIC_GENERATION_PROMPT = (
     "Generate a photorealistic top-down interior image from this floorplan"
 )
 
+# Method: generate_realistic_floorplan_for_classification
+# Purpose: Generate a realistic top-down rendered version while maintaining exact dimensions/positions
+REALISTIC_FLOORPLAN_FOR_CLASSIFICATION_PROMPT = """make realistic top down fully rendered version of this floor plan, keep the dimensions/positions of all furniture and walls 1 to 1, pixel to pixel"""
+
 
 # ============================================================================
 # AI SERVICE (Generic)

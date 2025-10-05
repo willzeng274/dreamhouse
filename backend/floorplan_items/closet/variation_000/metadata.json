@@ -1,0 +1,13 @@
+{
+  "model_mesh": {
+    "url": "https://v3b.fal.media/files/b/kangaroo/i_B7MkvcZVeRoKrQgd2zN_model.glb",
+    "content_type": "application/octet-stream",
+    "file_name": "model.glb",
+    "file_size": 1341040
+  },
+  "timings": {
+    "prepare": 1.4486955478787422e-05,
+    "generation": 2.9897251030197367,
+    "export": 8.727500795968808
+  }
+}

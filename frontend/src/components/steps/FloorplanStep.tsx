@@ -90,58 +90,7 @@ export default function FloorplanStep({
 	});
 	const [isPanning, setIsPanning] = useState(false);
 	const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
-	const [furnitureItems, setFurnitureItems] = useState<FurnitureItem[]>([
-		{
-			id: "1",
-			type: "sofa",
-			image: "https://placehold.co/80x40/E07B47/white?text=Sofa",
-			position: [80, 150],
-			dimensions: [80, 40],
-		},
-		{
-			id: "2",
-			type: "dining_table",
-			image: "https://placehold.co/160x100/4A7CFF/white?text=Table",
-			position: [120, 350],
-			dimensions: [160, 100],
-		},
-		{
-			id: "3",
-			type: "bed",
-			image: "https://placehold.co/120x80/6B6862/white?text=Bed",
-			position: [540, 380],
-			dimensions: [120, 80],
-		},
-	]);
-
-	const rooms: Room[] = [
-		{
-			name: "Living Room",
-			area: 48.4,
-			x: 40,
-			y: 80,
-			width: 320,
-			height: 240,
-		},
-		{ name: "Dining", area: 24.2, x: 40, y: 320, width: 320, height: 160 },
-		{ name: "Hallway", area: 12.1, x: 360, y: 80, width: 200, height: 280 },
-		{
-			name: "Kitchen",
-			area: 18.0,
-			x: 360,
-			y: 360,
-			width: 160,
-			height: 120,
-		},
-		{
-			name: "Bedroom",
-			area: 24.2,
-			x: 520,
-			y: 360,
-			width: 160,
-			height: 120,
-		},
-	];
+	const [furnitureItems, setFurnitureItems] = useState<FurnitureItem[]>([]);
 
 	const handleAddFurniture = (furnitureName: string) => {
 		if (selectedFurnitureId) {

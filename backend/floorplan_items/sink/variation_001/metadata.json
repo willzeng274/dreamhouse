@@ -1,0 +1,13 @@
+{
+  "model_mesh": {
+    "url": "https://v3b.fal.media/files/b/lion/5ydNg9yMTLaKJg4c2dCTF_model.glb",
+    "content_type": "application/octet-stream",
+    "file_name": "model.glb",
+    "file_size": 1233132
+  },
+  "timings": {
+    "prepare": 9.679235517978668e-06,
+    "generation": 2.5876520071178675,
+    "export": 9.426783153787255
+  }
+}

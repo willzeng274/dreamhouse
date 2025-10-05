@@ -17,15 +17,15 @@ def test_env_loading():
     print("Testing Environment Variable Loading")
     print("=" * 60)
 
-    openai_key = os.environ.get("OPENAI_API_KEY")
+    gemini_key = os.environ.get("GEMINI_API_KEY")
 
-    if openai_key:
-        print("[OK] OPENAI_API_KEY is set")
-        print(f"  Length: {len(openai_key)} characters")
-        print(f"  First 10 chars: {openai_key[:10]}...")
-        print(f"  Last 10 chars: ...{openai_key[-10:]}")
+    if gemini_key:
+        print("[OK] GEMINI_API_KEY is set")
+        print(f"  Length: {len(gemini_key)} characters")
+        print(f"  First 10 chars: {gemini_key[:10]}...")
+        print(f"  Last 10 chars: ...{gemini_key[-10:]}")
     else:
-        print("[ERROR] OPENAI_API_KEY is NOT set")
+        print("[ERROR] GEMINI_API_KEY is NOT set")
         print("\nPlease check your .env file!")
         return False
 
@@ -66,11 +66,14 @@ def test_segmentation_service():
         service = SegmentationService()
         print("[OK] Service initialized")
         print(f"  Model path: {service.model_path}")
-        print(f"  OpenAI model: {service.openai_model}")
-        print(f"  API key set: {'Yes' if service.openai_api_key else 'No'}")
+        print(f"  Gemini model: {service.gemini_model}")
+        print(f"  API key set: {'Yes' if service.gemini_api_key else 'No'}")
+        print(
+            f"  Gemini client: {'Initialized' if service.gemini_client else 'Not initialized'}"
+        )
 
-        if service.openai_api_key:
-            print(f"  API key length: {len(service.openai_api_key)}")
+        if service.gemini_api_key:
+            print(f"  API key length: {len(service.gemini_api_key)}")
 
         return True
     except Exception as e:

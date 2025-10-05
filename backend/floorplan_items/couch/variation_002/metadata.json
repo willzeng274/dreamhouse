@@ -1,0 +1,13 @@
+{
+  "model_mesh": {
+    "url": "https://v3b.fal.media/files/b/monkey/Do83gS-R87GniBRJtgDcl_model.glb",
+    "content_type": "application/octet-stream",
+    "file_name": "model.glb",
+    "file_size": 1426388
+  },
+  "timings": {
+    "prepare": 7.686205208301544e-06,
+    "generation": 2.52131125703454,
+    "export": 11.871805803850293
+  }
+}

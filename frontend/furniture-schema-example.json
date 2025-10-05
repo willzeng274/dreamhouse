@@ -1,41 +1,4 @@
 {
-	"furniture": [
-		{
-			"id": "1",
-			"type": "sofa",
-			"image": "https://placehold.co/80x40/E07B47/white?text=Sofa",
-			"position": [80, 150],
-			"dimensions": [80, 40]
-		},
-		{
-			"id": "2",
-			"type": "dining_table",
-			"image": "https://placehold.co/160x100/4A7CFF/white?text=Table",
-			"position": [120, 350],
-			"dimensions": [160, 100]
-		},
-		{
-			"id": "3",
-			"type": "bed",
-			"image": "https://placehold.co/120x80/6B6862/white?text=Bed",
-			"position": [540, 380],
-			"dimensions": [120, 80]
-		},
-		{
-			"id": "4",
-			"type": "armchair",
-			"image": "https://example.com/furniture/armchair.png",
-			"position": [200, 180],
-			"dimensions": [60, 60]
-		},
-		{
-			"id": "5",
-			"type": "coffee_table",
-			"image": "https://example.com/furniture/coffee-table.png",
-			"position": [180, 220],
-			"dimensions": [100, 60]
-		}
-	],
 	"schema": {
 		"description": "Furniture JSON Schema for FloorplanStep - Interactive drag-and-drop with click-to-switch functionality",
 		"properties": {

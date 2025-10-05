@@ -9,155 +9,44 @@ import os
 import base64
 import io
 import json
+import asyncio
 from typing import List, Dict, Any, Tuple
 import cv2
 import numpy as np
-from openai import OpenAI
+from google import genai
+from google.genai import types as gemini_types
+from anthropic import AsyncAnthropic
 from ultralytics import FastSAM
 from PIL import Image
 from dotenv import load_dotenv
+from app.config import get_settings
+from prompts import REALISTIC_FLOORPLAN_FOR_CLASSIFICATION_PROMPT
 
 # Load environment variables from .env file
 load_dotenv()
 
 
-# Furniture types - classified by ASPECT RATIO and SHAPE, NOT absolute size
-# IMPORTANT: A small bedside table is still a "table", just smaller - size doesn't change the category!
 FURNITURE_TYPES = [
-    # Architectural elements
-    {
-        "id": "door",
-        "name": "Door",
-        "aspect_ratio": "wide (2.5:1)",
-        "description": "Thin rectangular opening, usually in walls",
-    },
-    {
-        "id": "window",
-        "name": "Window",
-        "aspect_ratio": "wide (4:1)",
-        "description": "Very thin rectangular, along walls",
-    },
-    {
-        "id": "wall",
-        "name": "Wall",
-        "aspect_ratio": "very wide (>10:1)",
-        "description": "Long thin lines forming room boundaries",
-    },
-    # Bedroom furniture
-    {
-        "id": "bed",
-        "name": "Bed",
-        "aspect_ratio": "rectangular (3:4)",
-        "description": "Medium rectangle, usually against wall",
-    },
-    {
-        "id": "dresser",
-        "name": "Dresser",
-        "aspect_ratio": "wide (2.5:1)",
-        "description": "Wide shallow rectangle against wall",
-    },
-    # Seating (SIZE DOESN'T MATTER - armchair vs dining chair are both 'chair')
-    {
-        "id": "chair",
-        "name": "Chair",
-        "aspect_ratio": "square (1:1)",
-        "description": "Small square or rounded shape, any size",
-    },
-    {
-        "id": "couch",
-        "name": "Couch/Sofa",
-        "aspect_ratio": "wide (2:1)",
-        "description": "Long rectangle, usually against wall",
-    },
-    # Tables (SIZE DOESN'T MATTER - bedside table, coffee table, dining table all = 'table')
-    {
-        "id": "table",
-        "name": "Table",
-        "aspect_ratio": "square to rectangular (1:1 to 3:2)",
-        "description": "Square or slightly rectangular surface, can be ANY SIZE (dining table, coffee table, side table, bedside table, etc.)",
-    },
-    {
-        "id": "desk",
-        "name": "Desk",
-        "aspect_ratio": "rectangular (2:1)",
-        "description": "Rectangular work surface, often against wall",
-    },
-    # Bathroom fixtures
-    {
-        "id": "toilet",
-        "name": "Toilet",
-        "aspect_ratio": "tall (1:1.5)",
-        "description": "Small, slightly taller than wide",
-    },
-    {
-        "id": "sink",
-        "name": "Sink",
-        "aspect_ratio": "square (1:1)",
-        "description": "Small square fixture",
-    },
-    {
-        "id": "bathtub",
-        "name": "Bathtub",
-        "aspect_ratio": "rectangular (2:1)",
-        "description": "Long rectangle, usually against wall",
-    },
-    {
-        "id": "shower",
-        "name": "Shower",
-        "aspect_ratio": "square (1:1)",
-        "description": "Square enclosure",
-    },
-    # Kitchen appliances
-    {
-        "id": "kitchen_counter",
-        "name": "Kitchen Counter",
-        "aspect_ratio": "very wide (4:1)",
-        "description": "Long thin rectangle along wall",
-    },
-    {
-        "id": "refrigerator",
-        "name": "Refrigerator",
-        "aspect_ratio": "square to tall (1:1.2)",
-        "description": "Square or slightly taller than wide",
-    },
-    {
-        "id": "oven",
-        "name": "Oven/Stove",
-        "aspect_ratio": "square (1:1)",
-        "description": "Square appliance in kitchen",
-    },
-    {
-        "id": "dishwasher",
-        "name": "Dishwasher",
-        "aspect_ratio": "square (1:1)",
-        "description": "Square, built into counter",
-    },
-    # Storage
-    {
-        "id": "cabinet",
-        "name": "Cabinet",
-        "aspect_ratio": "rectangular (2:1)",
-        "description": "Rectangular storage unit",
-    },
-    {
-        "id": "closet",
-        "name": "Closet",
-        "aspect_ratio": "rectangular (1.5:1)",
-        "description": "Rectangular enclosed space",
-    },
-    # Other
-    {
-        "id": "stairs",
-        "name": "Stairs",
-        "aspect_ratio": "tall (1:2.5)",
-        "description": "Vertical rectangle with steps visible",
-    },
-    {
-        "id": "other",
-        "name": "Other/Unknown",
-        "aspect_ratio": "any",
-        "description": "Cannot identify",
-    },
+    "door",
+    "window",
+    "wall",
+    "bed",
+    "chair",
+    "table",
+    "couch",
+    "toilet",
+    "sink",
+    "bathtub",
+    "shower",
+    "kitchen counter",
+    "refrigerator",
+    "oven",
+    "dishwasher",
+    "stairs",
+    "closet",
+    "cabinet",
+    "desk",
+    "dresser",
 ]
 
 
@@ -171,8 +60,24 @@ class SegmentationService:
         """
         self.model_path = model_path
         self.model = None
-        self.openai_api_key = os.environ.get("OPENAI_API_KEY")
-        self.openai_model = "gpt-4o"  # Latest and most capable model
+
+        # Use Gemini for realistic rendering
+        settings = get_settings()
+        self.gemini_api_key = settings.gemini_api_key
+        self.gemini_client = (
+            genai.Client(api_key=self.gemini_api_key).aio
+            if self.gemini_api_key
+            else None
+        )
+
+        # Use Claude Sonnet 4.5 for classification (excellent vision & agent capabilities)
+        self.anthropic_api_key = settings.anthropic_api_key
+        self.anthropic_client = (
+            AsyncAnthropic(api_key=self.anthropic_api_key)
+            if self.anthropic_api_key
+            else None
+        )
+        self.classification_model = "claude-sonnet-4-5-20250929"  # Best vision model
 
     def _load_model(self):
         """Lazy load the FastSAM model."""
@@ -438,16 +343,22 @@ class SegmentationService:
         original_image: np.ndarray,
         mask_bool: np.ndarray,
         bbox_pixels: Dict,
-        padding: int = 5,
+        padding_percent: float = 0.20,  # 20% padding on each side
     ) -> np.ndarray:
-        """Extract and mask out a single object from the original image."""
+        """Extract and mask out a single object from the original image with generous padding."""
         img_height, img_width = original_image.shape[:2]
 
-        # Get bounding box with padding
-        x1 = max(0, bbox_pixels["x1"] - padding)
-        y1 = max(0, bbox_pixels["y1"] - padding)
-        x2 = min(img_width, bbox_pixels["x2"] + padding)
-        y2 = min(img_height, bbox_pixels["y2"] + padding)
+        # Calculate padding based on object size (10-20% on each side)
+        width = bbox_pixels["x2"] - bbox_pixels["x1"]
+        height = bbox_pixels["y2"] - bbox_pixels["y1"]
+        padding_x = int(width * padding_percent)
+        padding_y = int(height * padding_percent)
+
+        # Get bounding box with percentage-based padding
+        x1 = max(0, bbox_pixels["x1"] - padding_x)
+        y1 = max(0, bbox_pixels["y1"] - padding_y)
+        x2 = min(img_width, bbox_pixels["x2"] + padding_x)
+        y2 = min(img_height, bbox_pixels["y2"] + padding_y)
 
         # Crop the region
         cropped_img = original_image[y1:y2, x1:x2].copy()
@@ -512,6 +423,67 @@ class SegmentationService:
 
         return highlighted_img
 
+    async def _generate_realistic_floorplan(
+        self, floorplan_image: np.ndarray
+    ) -> np.ndarray:
+        """
+        Generate a realistic top-down rendered version of the floorplan.
+        Uses Gemini image generation to make furniture easier to identify.
+        """
+        if not self.gemini_client:
+            print("Warning: Cannot generate realistic version without Gemini API key")
+            return floorplan_image  # Return original if no API key
+
+        try:
+            print("  Generating realistic rendered version of floorplan...")
+
+            # Encode floorplan to bytes
+            _, buffer = cv2.imencode(".jpg", floorplan_image)
+            floorplan_bytes = buffer.tobytes()
+
+            # Build content for Gemini
+            parts = [
+                gemini_types.Part.from_bytes(
+                    data=floorplan_bytes, mime_type="image/jpeg"
+                ),
+                gemini_types.Part(text=REALISTIC_FLOORPLAN_FOR_CLASSIFICATION_PROMPT),
+            ]
+
+            # Generate realistic version
+            response = await self.gemini_client.models.generate_content(
+                model="gemini-2.5-flash-image",  # Image generation model
+                contents=parts,
+            )
+
+            # Extract generated image
+            image_parts = [
+                part.inline_data.data
+                for part in response.candidates[0].content.parts
+                if part.inline_data
+            ]
+
+            if image_parts:
+                # Convert bytes to numpy array
+                nparr = np.frombuffer(image_parts[0], np.uint8)
+                realistic_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+                if realistic_image is not None:
+                    print("  ✓ Successfully generated realistic version")
+                    return realistic_image
+                else:
+                    print("  ✗ Failed to decode generated image, using original")
+                    return floorplan_image
+            else:
+                print("  ✗ No image generated, using original")
+                return floorplan_image
+
+        except Exception as e:
+            print(f"  ✗ Error generating realistic version: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return floorplan_image  # Fallback to original
+
     def _reconstruct_masks(
         self, image: np.ndarray, detected_objects: List[Dict], results: Any
     ) -> List[np.ndarray]:
@@ -534,137 +506,101 @@ class SegmentationService:
 
         return masks_bool
 
-    def _classify_single_object_with_openai(
+    async def _classify_single_object_with_claude(
         self,
-        client: OpenAI,
         full_image: np.ndarray,
         highlighted_image: np.ndarray,
+        masked_crop: np.ndarray,
         obj_info: Dict,
         object_number: int,
     ) -> Dict:
-        """Classify a single object with OpenAI vision API for better accuracy."""
+        """Classify a single object with Claude Sonnet 4.5 vision API."""
 
-        # Create furniture list description (focus on aspect ratio, NOT size)
-        furniture_list = "\n".join(
-            [
-                f"- {f['id']}: {f['name']} - Aspect ratio: {f['aspect_ratio']} - {f['description']}"
-                for f in FURNITURE_TYPES
-            ]
-        )
+        # Create furniture list
+        furniture_list = "\n".join([f"- {f}" for f in FURNITURE_TYPES])
 
         # Calculate aspect ratio for this object
         width = obj_info["dimensions_normalized"]["width"]
         height = obj_info["dimensions_normalized"]["height"]
         aspect_ratio = width / height if height > 0 else 1.0
 
-        # Object description (focus on SHAPE, not absolute size!)
-        obj_desc = (
-            f"Aspect ratio: {aspect_ratio:.2f}:1 "
-            f"({'wider than tall' if aspect_ratio > 1.2 else 'taller than wide' if aspect_ratio < 0.8 else 'roughly square'})"
-        )
+        # Create focused prompt for single object
+        prompt = f"""You are a furniture evaluation agent. Your objective is to categorize furniture highlighted within a top-down, 2D floor plan.
 
-        # Create focused prompt for single object (emphasizing aspect ratio, not size)
-        prompt = f"""You are an interior designer analyzing ONE object in an ARCHITECTURAL FLOOR PLAN viewed from TOP-DOWN (bird's eye view).
+You will be provided the following data:
+- A top-down, 2D image of the entire floorplan, with all furniture, fixtures, architecture, rooms, etc.
+- A top-down, photorealistic image of the rendered interior, corresponding exactly to the floorplan.
+- A duplicate of the top-down photorealistic image with a specific piece of furniture highlighted.
+- A zoomed in image of the piece of furniture in isolated.
 
-CRITICAL: This is a TOP-DOWN/OVERHEAD view of a floor plan - all objects are seen from directly above.
+Your objective is to classify and categorize the piece of furniture based on the data provided to you (images, list of available furniture).
 
-IMAGES PROVIDED:
-- Image 1: ENTIRE floor plan (clean - for overall spatial context)
-- Image 2: SAME floor plan with ONE OBJECT highlighted with SEMI-TRANSPARENT ORANGE BOX and RED BORDER
-- Focus on classifying ONLY the highlighted object
-
-OBJECT TO CLASSIFY:
-{obj_desc}
-
-AVAILABLE FURNITURE/FIXTURE TYPES (classified by ASPECT RATIO and SHAPE, NOT absolute size):
+Available furniture/fixture types (YOU MUST PICK THE furniture_type FROM THIS LIST):
 {furniture_list}
-
-⚠️ CRITICAL CLASSIFICATION RULES:
-
-1. SIZE DOESN'T MATTER - Only ASPECT RATIO (width:height ratio) matters!
-   Examples:
-   - A small bedside table is still a "table" - size doesn't change its category
-   - A large dining table and a small coffee table are both "table" - same aspect ratio
-   - A small armchair and a large dining chair are both "chair" - similar aspect ratio
-   - Size varies, but if the shape/aspect ratio matches, it's the same furniture type
-
-2. FOCUS ON ASPECT RATIO:
-   - Square (1:1) = chairs, sinks, small tables, ovens
-   - Wide rectangle (2:1+) = sofas, beds, counters, desks
-   - Tall rectangle (1:2+) = doors, toilets, stairs
-   - Use the aspect ratio list above to match
-
-3. USE ROOM CONTEXT (not for size, but for disambiguation):
-   - Bedroom: bed, dresser, small table (bedside)
-   - Kitchen: counter, refrigerator, oven, table (dining)
-   - Bathroom: toilet, sink, bathtub, shower
-   - Living room: sofa, table (coffee), chairs
-   - Dining room: table (dining), chairs
-
-4. POSITION MATTERS:
-   - Against wall: beds, sofas, dressers, counters
-   - Center of room: dining tables, coffee tables
-   - Corner: cabinets, closets
-   - Clustered: dining sets (table + chairs)
-
-5. IGNORE ABSOLUTE SIZE:
-   - Don't reject "table" because it's small - could be bedside table
-   - Don't reject "chair" because it's large - could be armchair
-   - Match ONLY on aspect ratio and context
-
-Classify the highlighted object based ONLY on:
-- Its ASPECT RATIO (shape proportions) from top-down view
-- Its POSITION in the room (wall-aligned, centered, cornered)
-- Surrounding objects and room type context
-- NOT on absolute size!
 
 Return ONLY a JSON object in this exact format:
 {{
-  "furniture_id": "<id from available types>",
-  "furniture_name": "<name from available types>",
-  "confidence": "high|medium|low",
-  "reasoning": "<detailed explanation focusing on aspect ratio, position, and room context - NOT absolute size>"
+    "furniture_type": "<type from available types>",
+    "confidence": "high|medium|low",
+    "reasoning": "<detailed explanation: What do you SEE (texture/color)? Aspect ratio? Position? Room context?>",
+    "rotation": <rotation angle in degrees (0-360), where 0 is north/top of image, 90 is east/right, 180 is south/bottom, 270 is west/left>
 }}
-"""
+
+Pick correctly!"""
 
         try:
-            # Build content array with text prompt and images
+            # Build content for Claude
             content = [{"type": "text", "text": prompt}]
 
-            # First, add the FULL floor plan image for overall context
-            full_image_base64 = self._encode_image_to_base64(full_image)
+            # Image 1: FULL realistic floor plan (clean) for overall context
+            full_base64 = self._encode_image_to_base64(full_image)
             content.append(
                 {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{full_image_base64}",
-                        "detail": "low",
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": full_base64,
                     },
                 }
             )
 
-            # Add the highlighted image showing THIS specific object
+            # Image 2: FULL realistic floor plan with highlighted object (spatial context)
             highlighted_base64 = self._encode_image_to_base64(highlighted_image)
             content.append(
                 {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{highlighted_base64}",
-                        "detail": "high",  # Use high detail to see the highlight clearly
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": highlighted_base64,
                     },
                 }
             )
 
-            # Call OpenAI API with focused tokens for single object
-            response = client.chat.completions.create(
-                model=self.openai_model,
+            # Image 3: CLOSE-UP masked crop (detailed view of object with generous padding)
+            crop_base64 = self._encode_image_to_base64(masked_crop)
+            content.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": crop_base64,
+                    },
+                }
+            )
+
+            # Call Claude Sonnet 4.5 API (async)
+            response = await self.anthropic_client.messages.create(
+                model=self.classification_model,
+                max_tokens=500,
+                temperature=0.1,
                 messages=[{"role": "user", "content": content}],
-                max_tokens=500,  # Less tokens needed for single object
-                temperature=0.1,  # Very low temperature for consistent classification
             )
 
             # Parse the response
-            response_text = response.choices[0].message.content.strip()
+            response_text = response.content[0].text.strip()
 
             # Extract JSON from response
             if "```json" in response_text:
@@ -692,60 +628,230 @@ Return ONLY a JSON object in this exact format:
             # Return error classification
             return {
                 "object_number": object_number,
-                "furniture_id": "other",
-                "furniture_name": "Other/Unknown",
+                "furniture_type": "other",
                 "confidence": "error",
                 "reasoning": f"Classification failed: {str(e)}",
             }
 
-    def _classify_objects_individually(
+    async def _classify_objects_individually(
         self,
         full_image: np.ndarray,
         object_images_and_info: List[Tuple[np.ndarray, Dict]],
         highlighted_images: List[np.ndarray],
     ) -> List[Dict]:
-        """Classify each object individually for better accuracy."""
-        if not self.openai_api_key:
-            print("Warning: OPENAI_API_KEY not set, skipping classification")
+        """Classify all objects in parallel for speed."""
+        if not self.anthropic_api_key or not self.anthropic_client:
+            print("Warning: ANTHROPIC_API_KEY not set, skipping classification")
             return [
                 {
                     "object_number": i + 1,
-                    "furniture_id": "other",
-                    "furniture_name": "Other/Unknown",
+                    "furniture_type": "other",
                     "confidence": "unknown",
                     "reasoning": "No API key",
                 }
                 for i in range(len(object_images_and_info))
             ]
 
-        # Initialize OpenAI client
-        client = OpenAI(api_key=self.openai_api_key)
+        # Create classification tasks for all objects
+        print(
+            f"  Creating {len(object_images_and_info)} parallel classification tasks..."
+        )
 
-        classifications = []
-
-        # Classify each object individually
-        for i, ((obj_image, obj_info), highlighted_img) in enumerate(
+        tasks = []
+        for i, ((masked_crop, obj_info), highlighted_img) in enumerate(
             zip(object_images_and_info, highlighted_images)
         ):
-            print(f"  Classifying object {i+1}/{len(object_images_and_info)}...")
-
-            classification = self._classify_single_object_with_openai(
-                client=client,
+            task = self._classify_single_object_with_claude(
                 full_image=full_image,
                 highlighted_image=highlighted_img,
+                masked_crop=masked_crop,
                 obj_info=obj_info,
                 object_number=i + 1,
             )
+            tasks.append(task)
 
-            classifications.append(classification)
+        # Run all classifications in parallel
+        print(f"  Running {len(tasks)} classifications in parallel...")
+        classifications = await asyncio.gather(*tasks)
 
-            # Show result immediately
+        # Show all results
+        print(f"\n  Classification results:")
+        for classification in classifications:
+            obj_num = classification.get("object_number", "?")
             print(
-                f"    → {classification.get('furniture_name', 'Unknown')} "
+                f"    Object {obj_num}: {classification.get('furniture_name', 'Unknown')} "
                 f"(confidence: {classification.get('confidence', 'unknown')})"
             )
 
         return classifications
+
+    async def _match_object_to_model_variation(
+        self,
+        cropped_object: np.ndarray,
+        furniture_type: str,
+        floorplan_items_dir: str = "floorplan_items",
+    ) -> int:
+        """
+        Match a cropped object image to the best model variation using Claude 4.5 Sonnet.
+
+        Args:
+            cropped_object: The cropped/masked object image
+            furniture_type: The type of furniture (e.g., "door", "bed")
+            floorplan_items_dir: Path to the floorplan_items directory
+
+        Returns:
+            Index of the best matching variation (0-based)
+        """
+        if not self.anthropic_api_key or not self.anthropic_client:
+            print(
+                f"  Warning: No API key, defaulting to variation 0 for {furniture_type}"
+            )
+            return 0
+
+        # Build path to furniture type folder
+        furniture_dir = os.path.join(floorplan_items_dir, furniture_type)
+
+        if not os.path.exists(furniture_dir):
+            print(f"  Warning: Furniture directory not found: {furniture_dir}")
+            return 0
+
+        # Find all variation folders
+        variation_folders = sorted(
+            [
+                d
+                for d in os.listdir(furniture_dir)
+                if d.startswith("variation_")
+                and os.path.isdir(os.path.join(furniture_dir, d))
+            ]
+        )
+
+        if not variation_folders:
+            print(f"  Warning: No variations found for {furniture_type}")
+            return 0
+
+        print(f"  Found {len(variation_folders)} variations for {furniture_type}")
+
+        # Load product images from each variation
+        variation_images = []
+        valid_variations = []
+
+        for var_folder in variation_folders:
+            product_image_path = os.path.join(
+                furniture_dir, var_folder, "product_image.png"
+            )
+            if os.path.exists(product_image_path):
+                img = cv2.imread(product_image_path)
+                if img is not None:
+                    variation_images.append(img)
+                    valid_variations.append(var_folder)
+
+        if not variation_images:
+            print(f"  Warning: No valid product images found for {furniture_type}")
+            return 0
+
+        print(f"  Loaded {len(variation_images)} product images")
+
+        # Build prompt for Claude
+        prompt = f"""You are a furniture matching expert. Your task is to identify which product variation most closely resembles the cropped furniture item from a floorplan.
+
+You will be given:
+1. A cropped image of a {furniture_type} from a top-down floorplan view
+2. {len(variation_images)} product images showing different variations of {furniture_type}
+
+Carefully examine the cropped object and compare it with each product variation. Consider:
+- Overall shape and proportions
+- Visual style and design elements
+- Color and material appearance
+- Any distinctive features
+
+Return ONLY a JSON object in this exact format:
+{{
+    "best_match_index": <0-based index of the best matching variation>,
+    "confidence": "high|medium|low",
+    "reasoning": "<brief explanation of why this variation matches best>"
+}}
+
+The variations are numbered from 0 to {len(variation_images) - 1}."""
+
+        try:
+            # Build content for Claude
+            content = [{"type": "text", "text": prompt}]
+
+            # Add the cropped object image
+            cropped_base64 = self._encode_image_to_base64(cropped_object)
+            content.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": cropped_base64,
+                    },
+                }
+            )
+
+            # Add all variation product images
+            for i, var_img in enumerate(variation_images):
+                var_base64 = self._encode_image_to_base64(var_img)
+                content.append(
+                    {
+                        "type": "text",
+                        "text": f"Variation {i}:",
+                    }
+                )
+                content.append(
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/jpeg",
+                            "data": var_base64,
+                        },
+                    }
+                )
+
+            # Call Claude Sonnet 4.5
+            response = await self.anthropic_client.messages.create(
+                model=self.classification_model,
+                max_tokens=300,
+                temperature=0.1,
+                messages=[{"role": "user", "content": content}],
+            )
+
+            # Parse response
+            response_text = response.content[0].text.strip()
+
+            # Extract JSON
+            if "```json" in response_text:
+                json_start = response_text.find("```json") + 7
+                json_end = response_text.find("```", json_start)
+                response_text = response_text[json_start:json_end].strip()
+            elif "```" in response_text:
+                json_start = response_text.find("```") + 3
+                json_end = response_text.find("```", json_start)
+                response_text = response_text[json_start:json_end].strip()
+
+            result = json.loads(response_text)
+            best_match = result.get("best_match_index", 0)
+            confidence = result.get("confidence", "unknown")
+            reasoning = result.get("reasoning", "")
+
+            print(f"    Best match: variation {best_match} (confidence: {confidence})")
+            print(f"    Reasoning: {reasoning}")
+
+            # Ensure index is valid
+            if 0 <= best_match < len(variation_images):
+                return best_match
+            else:
+                print(f"  Warning: Invalid index {best_match}, defaulting to 0")
+                return 0
+
+        except Exception as e:
+            print(f"  Error matching {furniture_type} to model: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return 0
 
     async def extract_and_classify_furniture(
         self,
@@ -779,11 +885,20 @@ Return ONLY a JSON object in this exact format:
         if image is None:
             raise ValueError("Could not decode image")
 
-        # Check OpenAI API key
-        if self.openai_api_key:
-            print(f"✓ OpenAI API key found (length: {len(self.openai_api_key)})")
+        # Check API keys
+        if self.gemini_api_key:
+            print(f"✓ Gemini API key found (for realistic rendering)")
         else:
-            print("✗ WARNING: OPENAI_API_KEY not set - classification will be skipped!")
+            print("✗ WARNING: GEMINI_API_KEY not set - will use original schematic")
+
+        if self.anthropic_api_key:
+            print(
+                f"✓ Anthropic API key found (for classification with Claude Sonnet 4.5)"
+            )
+        else:
+            print(
+                "✗ WARNING: ANTHROPIC_API_KEY not set - classification will be skipped!"
+            )
 
         # Segment the image with filtering
         print(f"Segmenting image...")
@@ -806,8 +921,12 @@ Return ONLY a JSON object in this exact format:
         print("Reconstructing masks...")
         masks_bool = self._reconstruct_masks(image, detected_objects, results)
 
-        # Create highlighted images - one for each object showing full floorplan
-        print("Creating highlighted images for classification...")
+        # Generate realistic rendered version for better classification
+        print("\nGenerating realistic rendered version for classification...")
+        realistic_image = await self._generate_realistic_floorplan(image)
+
+        # Create highlighted images and masked crops from realistic version
+        print("Extracting objects from realistic version...")
         object_images_and_info = []
         highlighted_images = []
 
@@ -815,18 +934,18 @@ Return ONLY a JSON object in this exact format:
             if i < len(masks_bool):
                 mask_bool = masks_bool[i]
 
-                # Keep the masked object extraction for backward compatibility/reference
-                object_image = self._extract_object_image(
-                    image, mask_bool, obj["bbox_pixels"], padding=10
+                # Extract masked crop from REALISTIC version with generous 20% padding
+                realistic_crop = self._extract_object_image(
+                    realistic_image, mask_bool, obj["bbox_pixels"], padding_percent=0.20
                 )
 
-                # Create full image with THIS object highlighted (NEW approach)
-                highlighted_image = self._create_highlighted_image(
-                    image, obj["bbox_pixels"]
+                # Create highlighted image from REALISTIC version
+                highlighted_realistic = self._create_highlighted_image(
+                    realistic_image, obj["bbox_pixels"]
                 )
 
-                object_images_and_info.append((object_image, obj))
-                highlighted_images.append(highlighted_image)
+                object_images_and_info.append((realistic_crop, obj))
+                highlighted_images.append(highlighted_realistic)
 
         if not object_images_and_info:
             print("No objects to classify")
@@ -844,28 +963,49 @@ Return ONLY a JSON object in this exact format:
 
             print(f"\nSaving debug images to: {debug_dir}/")
 
-            # Save the clean full floorplan
-            clean_path = f"{debug_dir}/00_full_floorplan_clean.jpg"
-            cv2.imwrite(clean_path, image)
-            print(f"  Saved clean floorplan: {clean_path}")
+            # Save the original schematic floorplan
+            original_path = f"{debug_dir}/00a_original_schematic.jpg"
+            cv2.imwrite(original_path, image)
+            print(f"  Saved original schematic: {original_path}")
 
-            # Save each highlighted image
-            for i, highlighted_img in enumerate(highlighted_images):
+            # Save the realistic rendered version
+            realistic_path = f"{debug_dir}/00b_realistic_rendered.jpg"
+            cv2.imwrite(realistic_path, realistic_image)
+            print(f"  Saved realistic rendered: {realistic_path}")
+
+            # Save each highlighted image and masked crop (from realistic version)
+            for i, (highlighted_img, (masked_crop, _)) in enumerate(
+                zip(highlighted_images, object_images_and_info)
+            ):
                 obj = detected_objects[i]
-                highlighted_path = f"{debug_dir}/{i+1:02d}_object_{i+1}_highlighted.jpg"
+
+                # Save highlighted full realistic image
+                highlighted_path = (
+                    f"{debug_dir}/{i+1:02d}a_object_{i+1}_highlighted.jpg"
+                )
                 cv2.imwrite(highlighted_path, highlighted_img)
                 print(f"  Saved highlighted object #{i+1}: {highlighted_path}")
 
-            print(f"\n✓ Saved {len(highlighted_images) + 1} debug images\n")
+                # Save masked crop from realistic version
+                crop_path = f"{debug_dir}/{i+1:02d}b_object_{i+1}_crop.jpg"
+                cv2.imwrite(crop_path, masked_crop)
+                print(f"  Saved realistic crop #{i+1}: {crop_path}")
 
-        # Classify each object individually with full image context and highlights
+            print(f"\n✓ Saved {2 + len(highlighted_images) * 2} debug images\n")
+
+        # Classify each object individually with realistic rendered images
         print(
-            f"\nClassifying {len(object_images_and_info)} objects individually for better accuracy..."
+            f"\nClassifying {len(object_images_and_info)} objects individually using realistic renders..."
         )
-        classifications = self._classify_objects_individually(
-            image,  # Pass full floorplan image (clean, no highlights)
+        classifications = await self._classify_objects_individually(
+            realistic_image,  # Pass realistic rendered version (clean, no highlights)
             object_images_and_info,
-            highlighted_images,  # Pass full images with individual object highlights
+            highlighted_images,  # Pass realistic images with individual object highlights
+        )
+
+        # Match each object to its best model variation
+        print(
+            f"\nMatching {len(object_images_and_info)} objects to model variations..."
         )
 
         # Combine segmentation info with classifications
@@ -874,39 +1014,66 @@ Return ONLY a JSON object in this exact format:
         for i, ((obj_image, obj), classification) in enumerate(
             zip(object_images_and_info, classifications)
         ):
-            # Find the aspect ratio info for the classified furniture
-            furniture_id = classification.get("furniture_id", "other")
-            furniture_aspect_ratio = "any"
-            furniture_description = ""
-            for furniture in FURNITURE_TYPES:
-                if furniture["id"] == furniture_id:
-                    furniture_aspect_ratio = furniture["aspect_ratio"]
-                    furniture_description = furniture["description"]
-                    break
+            # Get furniture type from classification
+            furniture_type = classification.get("furniture_type", "other")
 
             # Calculate this object's actual aspect ratio
             width = obj["dimensions_normalized"]["width"]
             height = obj["dimensions_normalized"]["height"]
             obj_aspect_ratio = width / height if height > 0 else 1.0
 
-            # Combine segmentation info with classification
+            # Match object to best model variation
+            print(f"  Matching object #{i+1} ({furniture_type})...")
+            model_index = await self._match_object_to_model_variation(
+                obj_image,  # The cropped realistic object image
+                furniture_type,
+            )
+
+            # Calculate center position from bbox
+            center_x = (obj["bbox_normalized"]["x1"] + obj["bbox_normalized"]["x2"]) / 2
+            center_y = (obj["bbox_normalized"]["y1"] + obj["bbox_normalized"]["y2"]) / 2
+
+            # Combine segmentation info with classification in the desired format
             classified_obj = {
-                **obj,  # All original segmentation data
-                "classification": {
-                    "furniture_id": furniture_id,
-                    "furniture_name": classification.get(
-                        "furniture_name", "Other/Unknown"
-                    ),
-                    "confidence": classification.get("confidence", "unknown"),
-                    "reasoning": classification.get("reasoning", ""),
-                    "aspect_ratio": {
-                        "value": float(obj_aspect_ratio),
-                        "typical": furniture_aspect_ratio,
-                        "description": furniture_description,
-                    },
+                "name": furniture_type,
+                "model": model_index,  # Store the matched model variation index
+                "position": {
+                    "x": center_x,
+                    "y": center_y,
                 },
+                "dimensions": {
+                    "width": width,
+                    "height": height,
+                },
+                "rotation": classification.get("rotation", 0),
+                # Keep these for internal use
+                "bbox_normalized": obj["bbox_normalized"],
+                "bbox_pixels": obj["bbox_pixels"],
             }
             classified_objects.append(classified_obj)
 
-        print(f"Successfully classified {len(classified_objects)} objects")
+        print(
+            f"\nSuccessfully classified {len(classified_objects)} objects and matched models"
+        )
+
+        # Print final summary JSON in clean format for debugging
+        print(f"\n{'='*70}")
+        print("FINAL CLASSIFICATION RESULTS")
+        print(f"{'='*70}")
+
+        # Create clean output format (only essential fields)
+        clean_output = []
+        for obj in classified_objects:
+            clean_obj = {
+                "name": obj["name"],
+                "model": obj["model"],
+                "position": obj["position"],
+                "dimensions": obj["dimensions"],
+                "rotation": obj["rotation"],
+            }
+            clean_output.append(clean_obj)
+
+        print(json.dumps(clean_output, indent=2))
+        print(f"{'='*70}\n")
+
         return classified_objects

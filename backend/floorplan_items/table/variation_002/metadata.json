@@ -1,0 +1,13 @@
+{
+  "model_mesh": {
+    "url": "https://v3b.fal.media/files/b/penguin/KJzObZEDmF54j1ghdt_H6_model.glb",
+    "content_type": "application/octet-stream",
+    "file_name": "model.glb",
+    "file_size": 1175920
+  },
+  "timings": {
+    "prepare": 1.1343974620103836e-05,
+    "generation": 2.5734979193657637,
+    "export": 9.575005840975791
+  }
+}

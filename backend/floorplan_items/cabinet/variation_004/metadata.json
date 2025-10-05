@@ -1,0 +1,13 @@
+{
+  "model_mesh": {
+    "url": "https://v3b.fal.media/files/b/koala/UZIdU1h8L6kl1nnNyPo_n_model.glb",
+    "content_type": "application/octet-stream",
+    "file_name": "model.glb",
+    "file_size": 1245876
+  },
+  "timings": {
+    "prepare": 1.0043848305940628e-05,
+    "generation": 2.9392338329926133,
+    "export": 11.228174379095435
+  }
+}

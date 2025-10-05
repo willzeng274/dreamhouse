@@ -2,6 +2,7 @@ export interface FloorplanObject {
 	id: string;
 	type: string;
 	name: string;
+	model: number; // Model variation index (0-based)
 	position: {
 		x: number;
 		y: number;
@@ -10,6 +11,7 @@ export interface FloorplanObject {
 		width: number;
 		height: number;
 	};
+	rotation: number; // Rotation in degrees (0-360)
 	bbox_normalized: {
 		x1: number;
 		y1: number;
@@ -22,7 +24,7 @@ export interface FloorplanObject {
 		x2: number;
 		y2: number;
 	};
-	confidence: string;
+	confidence?: string;
 	reasoning?: string;
 	aspect_ratio?: {
 		value: number;
