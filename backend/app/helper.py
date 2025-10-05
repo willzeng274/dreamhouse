@@ -1,4 +1,5 @@
 import httpx
+import base64
 
 
 ALLOWED_IMAGE_TYPES = {
@@ -12,7 +13,19 @@ ALLOWED_IMAGE_TYPES = {
 
 
 async def fetch_image_from_url(url: str) -> tuple[bytes, str]:
-    """Fetch an image from a URL and return it as bytes along with mime type."""
+    """Fetch an image from a URL or decode from data URI and return it as bytes along with mime type."""
+    if url.startswith("data:"):
+        parts = url.split(",", 1)
+        header = parts[0]
+        data = parts[1]
+
+        mime_type = header.split(":")[1].split(";")[0]
+        if mime_type not in ALLOWED_IMAGE_TYPES:
+            mime_type = "image/png"
+
+        image_bytes = base64.b64decode(data)
+        return image_bytes, mime_type
+
     async with httpx.AsyncClient() as client:
         response = await client.get(url)
         response.raise_for_status()

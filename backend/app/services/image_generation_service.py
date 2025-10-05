@@ -1,37 +1,21 @@
-import httpx
+from app.services.ai_service import AIService
 
 
 class ImageGenerationService:
-    def __init__(self, nano_banana_api_key: str):
-        self.api_key = nano_banana_api_key
-        self.base_url = "https://api.nanobanana.com"
+    def __init__(self):
+        self.ai_service = AIService()
 
-    async def generate_from_sketch(self, sketch_data: str) -> str:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{self.base_url}/generate",
-                json={"sketch": sketch_data},
-                headers={"Authorization": f"Bearer {self.api_key}"}
-            )
-            response.raise_for_status()
-            return response.json()["image_url"]
+    async def generate_floorplan(self, sketch_bytes: bytes, mime_type: str) -> bytes:
+        prompt = "Generate a top-down architectural floorplan from this sketch"
+        result_bytes = await self.ai_service.generate_image(prompt, [(sketch_bytes, mime_type)])
+        return result_bytes.read()
 
-    async def edit_region(self, image_url: str, mask_data: str, prompt: str) -> str:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{self.base_url}/edit",
-                json={"image_url": image_url, "mask": mask_data, "prompt": prompt},
-                headers={"Authorization": f"Bearer {self.api_key}"}
-            )
-            response.raise_for_status()
-            return response.json()["image_url"]
+    async def revise_floorplan(self, floorplan_bytes: bytes, mime_type: str, instruction: str) -> bytes:
+        prompt = f"Revise this floorplan: {instruction}"
+        result_bytes = await self.ai_service.generate_image(prompt, [(floorplan_bytes, mime_type)])
+        return result_bytes.read()
 
-    async def revise_image(self, image_url: str, prompt: str) -> str:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{self.base_url}/revise",
-                json={"image_url": image_url, "prompt": prompt},
-                headers={"Authorization": f"Bearer {self.api_key}"}
-            )
-            response.raise_for_status()
-            return response.json()["image_url"]
+    async def generate_photorealistic(self, floorplan_bytes: bytes, mime_type: str) -> bytes:
+        prompt = "Generate a photorealistic top-down interior image from this floorplan"
+        result_bytes = await self.ai_service.generate_image(prompt, [(floorplan_bytes, mime_type)])
+        return result_bytes.read()

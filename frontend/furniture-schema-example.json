@@ -1,0 +1,119 @@
+{
+	"furniture": [
+		{
+			"id": "1",
+			"type": "sofa",
+			"image": "https://placehold.co/80x40/E07B47/white?text=Sofa",
+			"position": [80, 150],
+			"dimensions": [80, 40]
+		},
+		{
+			"id": "2",
+			"type": "dining_table",
+			"image": "https://placehold.co/160x100/4A7CFF/white?text=Table",
+			"position": [120, 350],
+			"dimensions": [160, 100]
+		},
+		{
+			"id": "3",
+			"type": "bed",
+			"image": "https://placehold.co/120x80/6B6862/white?text=Bed",
+			"position": [540, 380],
+			"dimensions": [120, 80]
+		},
+		{
+			"id": "4",
+			"type": "armchair",
+			"image": "https://example.com/furniture/armchair.png",
+			"position": [200, 180],
+			"dimensions": [60, 60]
+		},
+		{
+			"id": "5",
+			"type": "coffee_table",
+			"image": "https://example.com/furniture/coffee-table.png",
+			"position": [180, 220],
+			"dimensions": [100, 60]
+		}
+	],
+	"schema": {
+		"description": "Furniture JSON Schema for FloorplanStep - Interactive drag-and-drop with click-to-switch functionality",
+		"properties": {
+			"id": {
+				"type": "string",
+				"description": "Unique identifier for the furniture item"
+			},
+			"type": {
+				"type": "string",
+				"enum": [
+					"sofa",
+					"bed",
+					"dining_table",
+					"coffee_table",
+					"armchair",
+					"desk",
+					"bookshelf",
+					"wardrobe",
+					"nightstand",
+					"tv_stand",
+					"ottoman",
+					"bench",
+					"stool",
+					"cabinet",
+					"dresser"
+				],
+				"description": "Type of furniture from the furniture repository"
+			},
+			"image": {
+				"type": "string",
+				"format": "uri",
+				"description": "URL link to the furniture image (can be PNG, JPG, SVG, etc.)"
+			},
+			"position": {
+				"type": "array",
+				"items": {
+					"type": "number"
+				},
+				"minItems": 2,
+				"maxItems": 2,
+				"description": "Position [x, y] coordinates in pixels on the floorplan"
+			},
+			"dimensions": {
+				"type": "array",
+				"items": {
+					"type": "number"
+				},
+				"minItems": 2,
+				"maxItems": 2,
+				"description": "Dimensions [width, height] in pixels"
+			}
+		},
+		"required": ["id", "type", "image", "position", "dimensions"]
+	},
+	"usage": {
+		"interactivity": {
+			"pan_canvas": "Click and drag the canvas background to pan around the floorplan",
+			"zoom": "Scroll to zoom in/out, or use the +/- buttons in the header. Zooms toward mouse position",
+			"drag_furniture": "Click and drag any furniture item to reposition it (must move >5px)",
+			"click_to_switch": "Click on a furniture item (without dragging) to open the sidebar and choose a replacement",
+			"delete": "Click the red X button on selected furniture or use the Delete Selected button",
+			"add_furniture": "Click '+ Add Furniture' button in the bottom-right corner"
+		},
+		"visual_feedback": {
+			"selected": "Selected furniture items have an orange (#E07B47) outline and show a red delete button",
+			"dragging": "Furniture being dragged has a blue (#4A7CFF) outline",
+			"cursor_states": "grab cursor for panning, grabbing while panning/dragging furniture"
+		},
+		"ui_layout": {
+			"canvas_based": "Floorplan now renders on HTML5 Canvas with full pan and zoom support",
+			"header": "Zoom controls (+/-/Reset) and navigation buttons in the page header",
+			"bottom_right_button": "Add Furniture button fixed in bottom-right corner",
+			"right_sidebar": "Furniture selection sidebar slides in from the right when triggered"
+		},
+		"technical_details": {
+			"rendering": "Canvas-based rendering with coordinate transformations",
+			"pan_zoom": "Smooth pan and zoom with proper coordinate space conversion",
+			"drag_threshold": "5-pixel movement threshold to distinguish clicks from drags"
+		}
+	}
+}
