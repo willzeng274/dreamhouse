@@ -18,7 +18,7 @@ export const api = {
 			return response.blob();
 		},
 
-		async extract(floorplanFile: File): Promise<{ objects: any[] }> {
+		async extract(floorplanFile: File): Promise<{ objects: any[]; boundaries: any[] }> {
 			const formData = new FormData();
 			formData.append("floorplan", floorplanFile);
 

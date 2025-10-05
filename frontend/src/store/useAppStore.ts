@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { FloorplanObject } from "@/lib/types";
+import { FloorplanObject, BoundaryObject } from "@/lib/types";
 
 interface AppState {
 	// Sketch data
@@ -15,6 +15,10 @@ interface AppState {
 	// Extracted objects from floorplan
 	floorplanObjects: FloorplanObject[];
 	setFloorplanObjects: (objects: FloorplanObject[]) => void;
+
+	// Extracted boundaries from floorplan
+	floorplanBoundaries: BoundaryObject[];
+	setFloorplanBoundaries: (boundaries: BoundaryObject[]) => void;
 
 	// Photorealistic render
 	renderBlob: Blob | null;
@@ -39,6 +43,7 @@ export const useAppStore = create<AppState>((set) => ({
 	floorplanBlob: null,
 	floorplanDataUrl: null,
 	floorplanObjects: [],
+	floorplanBoundaries: [],
 	renderBlob: null,
 	renderDataUrl: null,
 	unityScene: null,
@@ -50,6 +55,7 @@ export const useAppStore = create<AppState>((set) => ({
 	setFloorplanDataUrl: (dataUrl) => set({ floorplanDataUrl: dataUrl }),
 
 	setFloorplanObjects: (objects) => set({ floorplanObjects: objects }),
+	setFloorplanBoundaries: (boundaries) => set({ floorplanBoundaries: boundaries }),
 
 	setRenderBlob: (blob) => set({ renderBlob: blob }),
 	setRenderDataUrl: (dataUrl) => set({ renderDataUrl: dataUrl }),
@@ -73,6 +79,7 @@ export const useAppStore = create<AppState>((set) => ({
 			floorplanBlob: null,
 			floorplanDataUrl: null,
 			floorplanObjects: [],
+			floorplanBoundaries: [],
 			renderBlob: null,
 			renderDataUrl: null,
 			unityScene: null,

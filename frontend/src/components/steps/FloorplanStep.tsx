@@ -44,6 +44,7 @@ export default function FloorplanStep({
 	const floorplanBlob = useAppStore((state) => state.floorplanBlob);
 	const floorplanDataUrl = useAppStore((state) => state.floorplanDataUrl);
 	const floorplanObjects = useAppStore((state) => state.floorplanObjects);
+	const floorplanBoundaries = useAppStore((state) => state.floorplanBoundaries);
 	const extractObjects = useExtractObjects();
 
 	// Load floorplan image
@@ -414,6 +415,41 @@ export default function FloorplanStep({
 			}
 		});
 
+		// Draw boundary elements (walls, doors, windows) - non-draggable
+		floorplanBoundaries.forEach((boundary) => {
+			if (!boundary.bbox_normalized || !img) return;
+
+			// Convert normalized bbox to canvas coordinates
+			const x1 = boundary.bbox_normalized.x1 * img.width;
+			const y1 = boundary.bbox_normalized.y1 * img.height;
+			const x2 = boundary.bbox_normalized.x2 * img.width;
+			const y2 = boundary.bbox_normalized.y2 * img.height;
+			const width = x2 - x1;
+			const height = y2 - y1;
+
+			// Set colors based on boundary class
+			let fillColor = "rgba(139, 69, 19, 0.2)"; // brown for walls
+			let strokeColor = "#8B4513"; // brown
+
+			if (boundary.class === "window") {
+				fillColor = "rgba(135, 206, 235, 0.3)"; // light blue
+				strokeColor = "#87CEEB";
+			} else if (boundary.class === "door") {
+				fillColor = "rgba(139, 90, 43, 0.25)"; // tan
+				strokeColor = "#8B5A2B";
+			}
+
+			// Draw boundary background
+			ctx.fillStyle = fillColor;
+			ctx.fillRect(x1, y1, width, height);
+
+			// Draw boundary outline - solid line (not dashed like draggable furniture)
+			ctx.strokeStyle = strokeColor;
+			ctx.lineWidth = 2;
+			ctx.setLineDash([]); // solid line
+			ctx.strokeRect(x1, y1, width, height);
+		});
+
 		ctx.restore();
 		ctx.restore();
 	};
@@ -427,6 +463,7 @@ export default function FloorplanStep({
 		selectedFurnitureId,
 		draggingId,
 		floorplanObjects,
+		floorplanBoundaries,
 	]);
 
 	// Initialize canvas size
@@ -880,15 +917,24 @@ export default function FloorplanStep({
 												: "grab",
 										}}
 									/>
-									{floorplanObjects.length > 0 && (
+									{(floorplanObjects.length > 0 || floorplanBoundaries.length > 0) && (
 										<div className='absolute top-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg px-4 py-2 shadow-lg'>
 											<p className='text-sm text-[#1A1815] font-medium'>
 												{floorplanObjects.length}{" "}
 												furniture item
 												{floorplanObjects.length !== 1
 													? "s"
-													: ""}{" "}
-												detected
+													: ""}
+												{floorplanBoundaries.length > 0 && (
+													<>
+														<br />
+														{floorplanBoundaries.length}{" "}
+														boundary element
+														{floorplanBoundaries.length !== 1
+															? "s"
+															: ""}
+													</>
+												)}
 											</p>
 										</div>
 									)}

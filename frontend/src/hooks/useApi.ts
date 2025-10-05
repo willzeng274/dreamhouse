@@ -25,6 +25,9 @@ export function useExtractObjects() {
 	const setFloorplanObjects = useAppStore(
 		(state) => state.setFloorplanObjects
 	);
+	const setFloorplanBoundaries = useAppStore(
+		(state) => state.setFloorplanBoundaries
+	);
 
 	return useMutation({
 		mutationFn: async (floorplanFile: File) => {
@@ -32,6 +35,7 @@ export function useExtractObjects() {
 		},
 		onSuccess: (data) => {
 			setFloorplanObjects(data.objects);
+			setFloorplanBoundaries(data.boundaries || []);
 		},
 	});
 }
