@@ -1,7 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, Form
 from fastapi.responses import Response
 from app.services.image_generation_service import ImageGenerationService
-from app.services.furniture_extraction_service import FurnitureExtractionService
+from app.services.minglun_service import MingLunService
 
 router = APIRouter(prefix="/floorplan", tags=["floorplan"])
 
@@ -21,7 +21,7 @@ async def generate_floorplan(sketch: UploadFile = File(...)):
 async def extract_objects(floorplan: UploadFile = File(...)):
     floorplan_bytes = await floorplan.read()
 
-    service = FurnitureExtractionService()
+    service = MingLunService()
     objects_data = await service.extract_objects(floorplan_bytes)
 
     return {"objects": objects_data}

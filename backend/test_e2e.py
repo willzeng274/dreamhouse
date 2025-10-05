@@ -48,17 +48,16 @@ async def test_workflow():
         print(f"   ✓ Floorplan generated ({len(floorplan_bytes)} bytes)")
         save_image(floorplan_bytes, "01_floorplan.png")
 
-        print("\n2. Extracting and classifying furniture objects (FastSAM + GPT-4o)...")
+        print("\n2. Extracting objects from floorplan (MingLun Pipeline)...")
         files = {"floorplan": ("floorplan.png", floorplan_bytes, "image/png")}
 
         response = await client.post(f"{BASE_URL}/floorplan/extract", files=files)
         extract_result = response.json()
         objects = extract_result["objects"]
-        print(f"   ✓ Extracted and classified {len(objects)} furniture objects")
+        print(f"   ✓ Extracted {len(objects)} objects")
         for i, obj in enumerate(objects[:3], 1):
-            aspect = obj.get("aspect_ratio", {}).get("value", 1.0)
             print(
-                f"     Object {i}: {obj.get('name', 'unknown')} - confidence: {obj.get('confidence', 'unknown')} - aspect ratio: {aspect:.2f}:1"
+                f"     Object {i}: {obj.get('type', 'unknown')} at ({obj.get('position', {}).get('x', 0)}, {obj.get('position', {}).get('y', 0)})"
             )
 
         print("\n3a. Revising floorplan with instruction (Gemini)...")

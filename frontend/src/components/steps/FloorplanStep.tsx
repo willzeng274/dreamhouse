@@ -39,14 +39,32 @@ export default function FloorplanStep({
 }: FloorplanStepProps) {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
+	const floorplanImageRef = useRef<HTMLImageElement | null>(null);
 
 	const floorplanBlob = useAppStore((state) => state.floorplanBlob);
+	const floorplanDataUrl = useAppStore((state) => state.floorplanDataUrl);
 	const floorplanObjects = useAppStore((state) => state.floorplanObjects);
 	const extractObjects = useExtractObjects();
 
+	// Load floorplan image
+	useEffect(() => {
+		if (floorplanDataUrl) {
+			const img = new Image();
+			img.onload = () => {
+				floorplanImageRef.current = img;
+				drawCanvas();
+			};
+			img.src = floorplanDataUrl;
+		}
+	}, [floorplanDataUrl]);
+
 	// Extract objects on mount if we have a floorplan but no objects
 	useEffect(() => {
-		if (floorplanBlob && floorplanObjects.length === 0 && !extractObjects.isPending) {
+		if (
+			floorplanBlob &&
+			floorplanObjects.length === 0 &&
+			!extractObjects.isPending
+		) {
 			const file = new File([floorplanBlob], "floorplan.png", {
 				type: "image/png",
 			});
@@ -164,11 +182,32 @@ export default function FloorplanStep({
 		setShowFurnitureModal(false);
 	};
 
+	const setFloorplanObjects = useAppStore(
+		(state) => state.setFloorplanObjects
+	);
+
 	const handleDeleteFurniture = () => {
 		if (selectedFurnitureId) {
-			setFurnitureItems(
-				furnitureItems.filter((item) => item.id !== selectedFurnitureId)
+			// Check if it's a detected object
+			const isDetected = floorplanObjects.some(
+				(obj) => obj.id === selectedFurnitureId
 			);
+
+			if (isDetected) {
+				// Remove from detected objects
+				setFloorplanObjects(
+					floorplanObjects.filter(
+						(obj) => obj.id !== selectedFurnitureId
+					)
+				);
+			} else {
+				// Remove from manually added items
+				setFurnitureItems(
+					furnitureItems.filter(
+						(item) => item.id !== selectedFurnitureId
+					)
+				);
+			}
 			setSelectedFurnitureId(null);
 		}
 	};
@@ -180,6 +219,21 @@ export default function FloorplanStep({
 		return { x: canvasX, y: canvasY };
 	};
 
+	// Convert normalized coordinates to canvas coordinates
+	const normalizedToCanvas = (x: number, y: number) => {
+		const canvas = canvasRef.current;
+		const img = floorplanImageRef.current;
+		if (!canvas || !img) return { x: 0, y: 0 };
+
+		const offsetX = (canvas.width / transform.scale - img.width) / 2;
+		const offsetY = (canvas.height / transform.scale - img.height) / 2;
+
+		return {
+			x: offsetX + x * img.width,
+			y: offsetY + y * img.height,
+		};
+	};
+
 	// Draw the floorplan on canvas
 	const drawCanvas = () => {
 		const canvas = canvasRef.current;
@@ -187,6 +241,8 @@ export default function FloorplanStep({
 
 		const ctx = canvas.getContext("2d");
 		if (!ctx) return;
+
+		const img = floorplanImageRef.current;
 
 		// Clear canvas
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -199,7 +255,7 @@ export default function FloorplanStep({
 		ctx.scale(transform.scale, transform.scale);
 
 		// Draw background
-		ctx.fillStyle = "#FFFFFF";
+		ctx.fillStyle = "#F5F3EF";
 		ctx.fillRect(
 			0,
 			0,
@@ -207,53 +263,95 @@ export default function FloorplanStep({
 			canvas.height / transform.scale
 		);
 
-		// Center the floorplan
-		const offsetX = (canvas.width / transform.scale - 720) / 2;
-		const offsetY = (canvas.height / transform.scale - 560) / 2;
+		if (!img) {
+			ctx.restore();
+			return;
+		}
+
+		// Center the floorplan image
+		const offsetX = (canvas.width / transform.scale - img.width) / 2;
+		const offsetY = (canvas.height / transform.scale - img.height) / 2;
 
 		ctx.save();
 		ctx.translate(offsetX, offsetY);
 
-		// Draw dimension lines
-		ctx.strokeStyle = "#4A7CFF";
-		ctx.lineWidth = 1.5;
-		ctx.fillStyle = "#4A7CFF";
-		ctx.font = "12px sans-serif";
-		ctx.textAlign = "center";
+		// Draw the floorplan image
+		ctx.drawImage(img, 0, 0, img.width, img.height);
 
-		// Top dimension
-		ctx.beginPath();
-		ctx.moveTo(40, 30);
-		ctx.lineTo(360, 30);
-		ctx.stroke();
-		ctx.fillText("8.2m", 200, 25);
+		// Draw detected furniture from floorplan objects
+		floorplanObjects.forEach((obj) => {
+			// Skip if object doesn't have required properties
+			if (!obj.bbox_normalized || !img) return;
 
-		// Draw rooms
-		rooms.forEach((room) => {
-			ctx.strokeStyle = "#1A1815";
-			ctx.lineWidth = 3;
-			ctx.strokeRect(room.x, room.y, room.width, room.height);
+			const isSelected = selectedFurnitureId === obj.id;
+			const isDragging = draggingId === obj.id;
 
+			// Convert normalized bbox to canvas coordinates
+			const x1 = obj.bbox_normalized.x1 * img.width;
+			const y1 = obj.bbox_normalized.y1 * img.height;
+			const x2 = obj.bbox_normalized.x2 * img.width;
+			const y2 = obj.bbox_normalized.y2 * img.height;
+			const width = x2 - x1;
+			const height = y2 - y1;
+
+			// Draw furniture background
+			ctx.fillStyle = "rgba(74, 124, 255, 0.15)";
+			ctx.fillRect(x1, y1, width, height);
+
+			// Draw furniture outline
+			ctx.strokeStyle = isSelected
+				? "#E07B47"
+				: isDragging
+				? "#4A7CFF"
+				: "#4A7CFF";
+			ctx.lineWidth = isSelected || isDragging ? 2.5 : 2;
+			ctx.setLineDash([]);
+			ctx.strokeRect(x1, y1, width, height);
+
+			// Draw furniture label with name
 			ctx.fillStyle = "#1A1815";
-			ctx.font = "16px sans-serif";
+			ctx.font = "bold 11px sans-serif";
 			ctx.textAlign = "center";
 			ctx.textBaseline = "middle";
-			ctx.fillText(
-				room.name.toUpperCase(),
-				room.x + room.width / 2,
-				room.y + room.height / 2 - 10
-			);
+			const label = obj.name || obj.type || "Unknown";
+			ctx.fillText(label.toUpperCase(), x1 + width / 2, y1 + height / 2);
 
-			ctx.fillStyle = "#6B6862";
-			ctx.font = "12px sans-serif";
-			ctx.fillText(
-				`${room.area} m²`,
-				room.x + room.width / 2,
-				room.y + room.height / 2 + 10
-			);
+			// Draw confidence indicator
+			const confidence = obj.confidence || "unknown";
+			const confidenceColor =
+				confidence === "high"
+					? "#10B981"
+					: confidence === "medium"
+					? "#F59E0B"
+					: "#EF4444";
+			ctx.fillStyle = confidenceColor;
+			ctx.beginPath();
+			ctx.arc(x1 + 6, y1 + 6, 4, 0, Math.PI * 2);
+			ctx.fill();
+
+			// Draw delete button when selected
+			if (isSelected) {
+				const deleteX = x2;
+				const deleteY = y1;
+
+				ctx.fillStyle = "#EF4444";
+				ctx.beginPath();
+				ctx.arc(deleteX, deleteY, 12, 0, Math.PI * 2);
+				ctx.fill();
+
+				ctx.strokeStyle = "white";
+				ctx.lineWidth = 2;
+				ctx.stroke();
+
+				ctx.fillStyle = "white";
+				ctx.font = "bold 14px sans-serif";
+				ctx.textAlign = "center";
+				ctx.textBaseline = "middle";
+				ctx.fillText("×", deleteX, deleteY);
+			}
 		});
 
-		// Draw furniture items
+		// Draw manually added furniture items (kept for backward compatibility)
 		furnitureItems.forEach((item) => {
 			const isSelected = selectedFurnitureId === item.id;
 			const isDragging = draggingId === item.id;
@@ -271,8 +369,8 @@ export default function FloorplanStep({
 			ctx.strokeStyle = isSelected
 				? "#E07B47"
 				: isDragging
-				? "#4A7CFF"
-				: "#6B6862";
+				? "#E07B47"
+				: "#E07B47";
 			ctx.lineWidth = isSelected || isDragging ? 2.5 : 1.5;
 			ctx.setLineDash([4, 4]);
 			ctx.strokeRect(
@@ -316,17 +414,6 @@ export default function FloorplanStep({
 			}
 		});
 
-		// Draw scale indicator
-		ctx.fillStyle = "#6B6862";
-		ctx.font = "bold 12px sans-serif";
-		ctx.textAlign = "end";
-		ctx.textBaseline = "alphabetic";
-		ctx.fillText("SCALE 1:50", 650, 530);
-
-		ctx.fillStyle = "#9B9892";
-		ctx.font = "10px sans-serif";
-		ctx.fillText("Total Area: 126.9 m²", 650, 545);
-
 		ctx.restore();
 		ctx.restore();
 	};
@@ -334,7 +421,13 @@ export default function FloorplanStep({
 	// Update canvas on transform or furniture change
 	useEffect(() => {
 		drawCanvas();
-	}, [transform, furnitureItems, selectedFurnitureId, draggingId]);
+	}, [
+		transform,
+		furnitureItems,
+		selectedFurnitureId,
+		draggingId,
+		floorplanObjects,
+	]);
 
 	// Initialize canvas size
 	useEffect(() => {
@@ -360,11 +453,51 @@ export default function FloorplanStep({
 		canvasY: number
 	): string | null => {
 		const canvas = canvasRef.current;
+		const img = floorplanImageRef.current;
 		if (!canvas) return null;
 
-		const offsetX = (canvas.width / transform.scale - 720) / 2;
-		const offsetY = (canvas.height / transform.scale - 560) / 2;
+		const offsetX = img
+			? (canvas.width / transform.scale - img.width) / 2
+			: (canvas.width / transform.scale - 720) / 2;
+		const offsetY = img
+			? (canvas.height / transform.scale - img.height) / 2
+			: (canvas.height / transform.scale - 560) / 2;
 
+		// Check detected furniture objects first
+		for (let i = floorplanObjects.length - 1; i >= 0; i--) {
+			const obj = floorplanObjects[i];
+			// Skip if object doesn't have required properties
+			if (!img || !obj.bbox_normalized) continue;
+
+			const x1 = offsetX + obj.bbox_normalized.x1 * img.width;
+			const y1 = offsetY + obj.bbox_normalized.y1 * img.height;
+			const x2 = offsetX + obj.bbox_normalized.x2 * img.width;
+			const y2 = offsetY + obj.bbox_normalized.y2 * img.height;
+
+			if (
+				canvasX >= x1 &&
+				canvasX <= x2 &&
+				canvasY >= y1 &&
+				canvasY <= y2
+			) {
+				return obj.id;
+			}
+
+			// Check delete button
+			if (selectedFurnitureId === obj.id) {
+				const deleteX = x2;
+				const deleteY = y1;
+				const dist = Math.sqrt(
+					Math.pow(canvasX - deleteX, 2) +
+						Math.pow(canvasY - deleteY, 2)
+				);
+				if (dist <= 12) {
+					return "delete:" + obj.id;
+				}
+			}
+		}
+
+		// Check manually added furniture items
 		for (let i = furnitureItems.length - 1; i >= 0; i--) {
 			const item = furnitureItems[i];
 			const x = item.position[0] + offsetX;
@@ -412,9 +545,20 @@ export default function FloorplanStep({
 		if (furnitureId) {
 			if (furnitureId.startsWith("delete:")) {
 				const id = furnitureId.replace("delete:", "");
-				setFurnitureItems(
-					furnitureItems.filter((item) => item.id !== id)
+				// Check if it's a detected object
+				const isDetected = floorplanObjects.some(
+					(obj) => obj.id === id
 				);
+
+				if (isDetected) {
+					setFloorplanObjects(
+						floorplanObjects.filter((obj) => obj.id !== id)
+					);
+				} else {
+					setFurnitureItems(
+						furnitureItems.filter((item) => item.id !== id)
+					);
+				}
 				setSelectedFurnitureId(null);
 				return;
 			}
@@ -708,27 +852,48 @@ export default function FloorplanStep({
 
 						{/* Floorplan Content */}
 						<div className='flex-1 flex items-center justify-center bg-[#F5F3EF]'>
-							<div
-								ref={containerRef}
-								className='w-full h-full bg-white overflow-hidden relative'
-							>
-								<canvas
-									ref={canvasRef}
-									className='w-full h-full'
-									onMouseDown={handleCanvasMouseDown}
-									onMouseMove={handleCanvasMouseMove}
-									onMouseUp={handleCanvasMouseUp}
-									onMouseLeave={handleCanvasMouseUp}
-									onWheel={handleWheel}
-									style={{
-										cursor: draggingId
-											? "grabbing"
-											: isPanning
-											? "grabbing"
-											: "grab",
-									}}
-								/>
-							</div>
+							{extractObjects.isPending ? (
+								<div className='text-center space-y-4'>
+									<div className='w-16 h-16 border-4 border-[#E5E2DA] border-t-[#E07B47] rounded-full animate-spin mx-auto'></div>
+									<p className='text-[#6B6862] text-sm'>
+										Detecting and classifying furniture...
+									</p>
+								</div>
+							) : (
+								<div
+									ref={containerRef}
+									className='w-full h-full bg-white overflow-hidden relative'
+								>
+									<canvas
+										ref={canvasRef}
+										className='w-full h-full'
+										onMouseDown={handleCanvasMouseDown}
+										onMouseMove={handleCanvasMouseMove}
+										onMouseUp={handleCanvasMouseUp}
+										onMouseLeave={handleCanvasMouseUp}
+										onWheel={handleWheel}
+										style={{
+											cursor: draggingId
+												? "grabbing"
+												: isPanning
+												? "grabbing"
+												: "grab",
+										}}
+									/>
+									{floorplanObjects.length > 0 && (
+										<div className='absolute top-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg px-4 py-2 shadow-lg'>
+											<p className='text-sm text-[#1A1815] font-medium'>
+												{floorplanObjects.length}{" "}
+												furniture item
+												{floorplanObjects.length !== 1
+													? "s"
+													: ""}{" "}
+												detected
+											</p>
+										</div>
+									)}
+								</div>
+							)}
 						</div>
 					</div>
 				</div>

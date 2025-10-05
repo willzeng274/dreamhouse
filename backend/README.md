@@ -134,10 +134,10 @@ backend/
 │   │   ├── image.py      # Image generation endpoints
 │   │   └── scene.py      # Scene export endpoints
 │   ├── services/         # Business logic
-│   │   ├── segmentation_service.py            # Furniture detection & classification
-│   │   ├── furniture_extraction_service.py    # Object extraction coordinator
-│   │   ├── image_generation_service.py        # Image generation
-│   │   └── scene_generation_service.py        # Scene export
+│   │   ├── segmentation_service.py      # Furniture detection & classification
+│   │   ├── minglun_service.py           # Object extraction coordinator
+│   │   ├── image_generation_service.py  # Image generation
+│   │   └── scene_generation_service.py  # Scene export
 │   ├── schemas/          # Pydantic models
 │   └── config.py         # Configuration
 ├── test/                 # Tests

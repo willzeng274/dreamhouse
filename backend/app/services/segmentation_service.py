@@ -21,27 +21,27 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-# Furniture types - classified by shape/aspect ratio, NOT size
-# NOTE: Size doesn't matter! A small bedside table is still a table, just smaller.
+# Furniture types - classified by ASPECT RATIO and SHAPE, NOT absolute size
+# IMPORTANT: A small bedside table is still a "table", just smaller - size doesn't change the category!
 FURNITURE_TYPES = [
     # Architectural elements
     {
         "id": "door",
         "name": "Door",
         "aspect_ratio": "wide (2.5:1)",
-        "description": "Thin rectangular, usually along walls",
+        "description": "Thin rectangular opening, usually in walls",
     },
     {
         "id": "window",
         "name": "Window",
         "aspect_ratio": "wide (4:1)",
-        "description": "Very thin rectangular along walls",
+        "description": "Very thin rectangular, along walls",
     },
     {
         "id": "wall",
         "name": "Wall",
-        "aspect_ratio": "very wide (15:1)",
-        "description": "Long thin lines",
+        "aspect_ratio": "very wide (>10:1)",
+        "description": "Long thin lines forming room boundaries",
     },
     # Bedroom furniture
     {
@@ -56,12 +56,12 @@ FURNITURE_TYPES = [
         "aspect_ratio": "wide (2.5:1)",
         "description": "Wide shallow rectangle against wall",
     },
-    # Seating
+    # Seating (SIZE DOESN'T MATTER - armchair vs dining chair are both 'chair')
     {
         "id": "chair",
         "name": "Chair",
         "aspect_ratio": "square (1:1)",
-        "description": "Small square or circular, any size",
+        "description": "Small square or rounded shape, any size",
     },
     {
         "id": "couch",
@@ -69,18 +69,18 @@ FURNITURE_TYPES = [
         "aspect_ratio": "wide (2:1)",
         "description": "Long rectangle, usually against wall",
     },
-    # Tables - SIZE DOESN'T MATTER! Bedside table is still a table, just smaller
+    # Tables (SIZE DOESN'T MATTER - bedside table, coffee table, dining table all = 'table')
     {
         "id": "table",
         "name": "Table",
         "aspect_ratio": "square to rectangular (1:1 to 3:2)",
-        "description": "Square or slightly rectangular, can be any size (dining table, coffee table, side table, bedside table, etc.)",
+        "description": "Square or slightly rectangular surface, can be ANY SIZE (dining table, coffee table, side table, bedside table, etc.)",
     },
     {
         "id": "desk",
         "name": "Desk",
         "aspect_ratio": "rectangular (2:1)",
-        "description": "Rectangular, often against wall",
+        "description": "Rectangular work surface, often against wall",
     },
     # Bathroom fixtures
     {
@@ -93,13 +93,13 @@ FURNITURE_TYPES = [
         "id": "sink",
         "name": "Sink",
         "aspect_ratio": "square (1:1)",
-        "description": "Small square, usually wall-mounted",
+        "description": "Small square fixture",
     },
     {
         "id": "bathtub",
         "name": "Bathtub",
         "aspect_ratio": "rectangular (2:1)",
-        "description": "Long rectangle",
+        "description": "Long rectangle, usually against wall",
     },
     {
         "id": "shower",
@@ -117,14 +117,14 @@ FURNITURE_TYPES = [
     {
         "id": "refrigerator",
         "name": "Refrigerator",
-        "aspect_ratio": "square to tall (1:1.3)",
-        "description": "Slightly taller than wide",
+        "aspect_ratio": "square to tall (1:1.2)",
+        "description": "Square or slightly taller than wide",
     },
     {
         "id": "oven",
         "name": "Oven/Stove",
         "aspect_ratio": "square (1:1)",
-        "description": "Square appliance",
+        "description": "Square appliance in kitchen",
     },
     {
         "id": "dishwasher",
@@ -137,7 +137,7 @@ FURNITURE_TYPES = [
         "id": "cabinet",
         "name": "Cabinet",
         "aspect_ratio": "rectangular (2:1)",
-        "description": "Rectangular storage",
+        "description": "Rectangular storage unit",
     },
     {
         "id": "closet",
@@ -150,13 +150,13 @@ FURNITURE_TYPES = [
         "id": "stairs",
         "name": "Stairs",
         "aspect_ratio": "tall (1:2.5)",
-        "description": "Vertical rectangle with steps",
+        "description": "Vertical rectangle with steps visible",
     },
     {
         "id": "other",
         "name": "Other/Unknown",
         "aspect_ratio": "any",
-        "description": "Unknown object",
+        "description": "Cannot identify",
     },
 ]
 
@@ -557,70 +557,73 @@ class SegmentationService:
         height = obj_info["dimensions_normalized"]["height"]
         aspect_ratio = width / height if height > 0 else 1.0
 
-        # Object description (focus on shape, not size!)
+        # Object description (focus on SHAPE, not absolute size!)
         obj_desc = (
             f"Aspect ratio: {aspect_ratio:.2f}:1 "
             f"({'wider than tall' if aspect_ratio > 1.2 else 'taller than wide' if aspect_ratio < 0.8 else 'roughly square'})"
         )
 
-        # Create focused prompt for single object
+        # Create focused prompt for single object (emphasizing aspect ratio, not size)
         prompt = f"""You are an interior designer analyzing ONE object in an ARCHITECTURAL FLOOR PLAN viewed from TOP-DOWN (bird's eye view).
 
-IMPORTANT CONTEXT:
-- This is a TOP-DOWN/OVERHEAD view of a floor plan
-- All objects are seen from directly above
-- Image 1: ENTIRE floor plan (clean - for overall context)
+CRITICAL: This is a TOP-DOWN/OVERHEAD view of a floor plan - all objects are seen from directly above.
+
+IMAGES PROVIDED:
+- Image 1: ENTIRE floor plan (clean - for overall spatial context)
 - Image 2: SAME floor plan with ONE OBJECT highlighted with SEMI-TRANSPARENT ORANGE BOX and RED BORDER
 - Focus on classifying ONLY the highlighted object
 
 OBJECT TO CLASSIFY:
 {obj_desc}
 
-AVAILABLE FURNITURE/FIXTURE TYPES (classified by ASPECT RATIO and SHAPE, not absolute size):
+AVAILABLE FURNITURE/FIXTURE TYPES (classified by ASPECT RATIO and SHAPE, NOT absolute size):
 {furniture_list}
 
-CRITICAL CLASSIFICATION RULES:
-1. SIZE DOESN'T MATTER! Focus on ASPECT RATIO (width:height ratio) and SHAPE only
-   - Example: A small bedside table is still a "table" - size doesn't change its category
-   - Example: A small 2-person dining table is still a "table" - same as a large 10-person table
-   - Example: A single chair and an armchair are both "chair" - size varies but aspect ratio is similar
+⚠️ CRITICAL CLASSIFICATION RULES:
 
-2. TOP-DOWN VIEW SHAPES:
-   - Beds: Rectangular (3:4 aspect ratio), usually against wall
-   - Tables: Square to rectangular (1:1 to 3:2), ANY SIZE (coffee table, dining table, side table, bedside table all = "table")
-   - Chairs: Square/circular (1:1), ANY SIZE
-   - Sofas: Wide rectangle (2:1), against wall
-   - Desks: Rectangular (2:1), often against wall
+1. SIZE DOESN'T MATTER - Only ASPECT RATIO (width:height ratio) matters!
+   Examples:
+   - A small bedside table is still a "table" - size doesn't change its category
+   - A large dining table and a small coffee table are both "table" - same aspect ratio
+   - A small armchair and a large dining chair are both "chair" - similar aspect ratio
+   - Size varies, but if the shape/aspect ratio matches, it's the same furniture type
 
-3. USE FULL CONTEXT for room type identification:
-   - Where is it positioned relative to walls, doors, windows?
-   - What room is this in? (bedroom, kitchen, bathroom, living room)
-   - What other furniture is nearby? (bed+dresser+small table = bedroom furniture)
+2. FOCUS ON ASPECT RATIO:
+   - Square (1:1) = chairs, sinks, small tables, ovens
+   - Wide rectangle (2:1+) = sofas, beds, counters, desks
+   - Tall rectangle (1:2+) = doors, toilets, stairs
+   - Use the aspect ratio list above to match
 
-4. RELATIONSHIPS HELP IDENTIFY ROOM TYPE (but not object size):
-   - bed+dresser+small table (bedside) = bedroom
-   - table+chairs = dining area or kitchen
-   - sink+toilet+bathtub = bathroom
-   - counter+refrigerator+oven = kitchen
+3. USE ROOM CONTEXT (not for size, but for disambiguation):
+   - Bedroom: bed, dresser, small table (bedside)
+   - Kitchen: counter, refrigerator, oven, table (dining)
+   - Bathroom: toilet, sink, bathtub, shower
+   - Living room: sofa, table (coffee), chairs
+   - Dining room: table (dining), chairs
 
-5. IGNORE ABSOLUTE SIZE - Use only:
-   - Aspect ratio (shape proportions)
-   - Position in room (wall-aligned, centered, cornered)
-   - Surrounding context (what room type, what's nearby)
-   - Top-down shape appearance
+4. POSITION MATTERS:
+   - Against wall: beds, sofas, dressers, counters
+   - Center of room: dining tables, coffee tables
+   - Corner: cabinets, closets
+   - Clustered: dining sets (table + chairs)
+
+5. IGNORE ABSOLUTE SIZE:
+   - Don't reject "table" because it's small - could be bedside table
+   - Don't reject "chair" because it's large - could be armchair
+   - Match ONLY on aspect ratio and context
 
 Classify the highlighted object based ONLY on:
-- Its ASPECT RATIO and SHAPE from top-down view (NOT absolute size!)
-- Its position in the room (wall-aligned, centered, cornered)
-- Surrounding objects and room type
-- Typical furniture arrangements and relationships
+- Its ASPECT RATIO (shape proportions) from top-down view
+- Its POSITION in the room (wall-aligned, centered, cornered)
+- Surrounding objects and room type context
+- NOT on absolute size!
 
 Return ONLY a JSON object in this exact format:
 {{
   "furniture_id": "<id from available types>",
   "furniture_name": "<name from available types>",
   "confidence": "high|medium|low",
-  "reasoning": "<detailed explanation focusing on aspect ratio, position, and context - NOT size>"
+  "reasoning": "<detailed explanation focusing on aspect ratio, position, and room context - NOT absolute size>"
 }}
 """
 
@@ -871,7 +874,7 @@ Return ONLY a JSON object in this exact format:
         for i, ((obj_image, obj), classification) in enumerate(
             zip(object_images_and_info, classifications)
         ):
-            # Find the aspect ratio for the classified furniture
+            # Find the aspect ratio info for the classified furniture
             furniture_id = classification.get("furniture_id", "other")
             furniture_aspect_ratio = "any"
             furniture_description = ""
@@ -881,7 +884,7 @@ Return ONLY a JSON object in this exact format:
                     furniture_description = furniture["description"]
                     break
 
-            # Calculate this object's aspect ratio
+            # Calculate this object's actual aspect ratio
             width = obj["dimensions_normalized"]["width"]
             height = obj["dimensions_normalized"]["height"]
             obj_aspect_ratio = width / height if height > 0 else 1.0

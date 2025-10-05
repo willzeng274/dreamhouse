@@ -1,2 +1,37 @@
 .DS_Store
 
+# Debug output from classification
+backend/classification_debug/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+venv*/
+
+# Node
+node_modules/
+.next/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Model files (large)
+backend/*.pt
+
+# Logs
+*.log
