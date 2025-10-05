@@ -22,6 +22,29 @@ export const api = {
 			const formData = new FormData();
 			formData.append("floorplan", floorplanFile);
 
+			// Verbose logging for debugging
+			console.log("=== EXTRACT ENDPOINT: Sending to Backend ===");
+			console.log("Endpoint:", `${API_BASE_URL}/floorplan/extract`);
+			console.log("File name:", floorplanFile.name);
+			console.log("File size:", floorplanFile.size, "bytes");
+			console.log("File type:", floorplanFile.type);
+
+			// Convert file to base64 for logging
+			const reader = new FileReader();
+			const base64Promise = new Promise<string>((resolve) => {
+				reader.onload = (e) => {
+					const dataUrl = e.target?.result as string;
+					resolve(dataUrl);
+				};
+				reader.readAsDataURL(floorplanFile);
+			});
+
+			const base64Data = await base64Promise;
+			console.log("Base64 image data URL:", base64Data);
+			console.log("Full base64 length:", base64Data.length);
+			console.log("Note: Extract endpoint does not use a text prompt parameter");
+			console.log("=========================================");
+
 			const response = await fetch(`${API_BASE_URL}/floorplan/extract`, {
 				method: "POST",
 				body: formData,
@@ -31,7 +54,14 @@ export const api = {
 				throw new Error(`Failed to extract objects: ${response.statusText}`);
 			}
 
-			return response.json();
+			const result = await response.json();
+			console.log("=== EXTRACT ENDPOINT: Response ===");
+			console.log("Objects extracted:", result.objects?.length || 0);
+			console.log("Boundaries extracted:", result.boundaries?.length || 0);
+			console.table(result.objects?.slice(0, 5)); // Log first 5 objects
+			console.log("=========================================");
+
+			return result;
 		},
 
 		async revise(
