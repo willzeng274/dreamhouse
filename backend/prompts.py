@@ -12,7 +12,7 @@ organized by service and functionality for easy maintenance and updates.
 
 # Method: generate_floorplan (line 8-11)
 # Purpose: Convert a hand-drawn sketch into a top-down architectural floorplan
-FLOORPLAN_GENERATION_PROMPT = """convert this very rough sketch into a fully realized, top-down floorplan, with proper graphics, lots of distinct furniture, architecture, rooms, etc. make sure that the final output is a proper, real floorplan. Never overlap pieces of furniture, ex. absolutely NO RUGS OR CARPET. NO TEXT OR LABELS. everything should be low res black and white. Use only straight lines. Beds should be a uniform light color, not easily mistaken as 2 parts"""
+FLOORPLAN_GENERATION_PROMPT = """convert this very rough sketch into a fully realized, top-down floorplan, with proper graphics, lots of distinct furniture, architecture, rooms, etc. make sure that the final output is a proper, real floorplan. Never overlap pieces of furniture, ex. absolutely NO RUGS OR CARPET. NO TEXT OR LABELS. If there is text in the sketch, remove it. everything should be low res black and white. Use only straight lines. Beds should be a uniform light color, not easily mistaken as 2 parts"""
 
 # Method: revise_floorplan (line 13-16)
 # Purpose: Revise an existing floorplan based on user instructions
@@ -29,7 +29,17 @@ def get_floorplan_revision_prompt(instruction: str) -> str:
     Returns:
         Formatted prompt for floorplan revision
     """
-    return f"Revise this floorplan: {instruction}"
+
+    full_prompt = f"""
+    Edit this image according to the following instructions: {instruction}
+
+    Your edits should be based off of the green annotation. Remove the green annotation at the end.
+    Add/remove black straight lines for walls.
+
+    Remember to edit and move around the furniture, fixtures, architectural elements, etc. accordingly! make sure the output is a proper floor plan and does NOT have any annotation remaining on it.
+    """
+
+    return full_prompt
 
 
 # Method: generate_photorealistic (line 18-21)
