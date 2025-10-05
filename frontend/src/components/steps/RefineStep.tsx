@@ -48,10 +48,13 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 
 	const generateFloorplan = useGenerateFloorplan();
 	const reviseFloorplan = useReviseFloorplan();
+	const hasRequestedGenerateRef = useRef(false);
 
-	// Generate floorplan from sketch on mount
+	// Generate floorplan from sketch on mount (guard against dev double-invocation)
 	useEffect(() => {
+		if (hasRequestedGenerateRef.current) return;
 		if (sketchDataUrl && !floorplanDataUrl) {
+			hasRequestedGenerateRef.current = true;
 			// Convert data URL to file
 			fetch(sketchDataUrl)
 				.then((res) => res.blob())
@@ -62,7 +65,7 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 					generateFloorplan.mutate(file);
 				});
 		}
-	}, [sketchDataUrl]);
+	}, [sketchDataUrl, floorplanDataUrl]);
 
 	const createAnnotatedImage = async (): Promise<Blob | null> => {
 		if (!floorplanDataUrl || highlighterStrokes.length === 0) return null;
