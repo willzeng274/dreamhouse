@@ -40,6 +40,7 @@ export default function FloorplanStep({
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
 	const floorplanImageRef = useRef<HTMLImageElement | null>(null);
+	const extractionInitiatedRef = useRef<string | null>(null);
 
 	const floorplanBlob = useAppStore((state) => state.floorplanBlob);
 	const floorplanDataUrl = useAppStore((state) => state.floorplanDataUrl);
@@ -66,12 +67,19 @@ export default function FloorplanStep({
 			floorplanObjects.length === 0 &&
 			!extractObjects.isPending
 		) {
-			const file = new File([floorplanBlob], "floorplan.png", {
-				type: "image/png",
-			});
-			extractObjects.mutate(file);
+			// Create a unique identifier for this blob
+			const blobId = `${floorplanBlob.size}-${floorplanBlob.type}`;
+			
+			// Only extract if we haven't already initiated extraction for this blob
+			if (extractionInitiatedRef.current !== blobId) {
+				extractionInitiatedRef.current = blobId;
+				const file = new File([floorplanBlob], "floorplan.png", {
+					type: "image/png",
+				});
+				extractObjects.mutate(file);
+			}
 		}
-	}, [floorplanBlob]);
+	}, [floorplanBlob, floorplanObjects.length, extractObjects.isPending]);
 
 	const [showFurnitureModal, setShowFurnitureModal] = useState(false);
 	const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
@@ -416,8 +424,11 @@ export default function FloorplanStep({
 		});
 
 		// Draw boundary elements (walls, doors, windows) - non-draggable
+		// Render in order: walls first, then doors, then windows (for proper z-ordering)
+		
+		// First pass: Draw walls
 		floorplanBoundaries.forEach((boundary) => {
-			if (!boundary.bbox_normalized || !img) return;
+			if (!boundary.bbox_normalized || !img || boundary.class !== "wall") return;
 
 			// Convert normalized bbox to canvas coordinates
 			const x1 = boundary.bbox_normalized.x1 * img.width;
@@ -427,24 +438,58 @@ export default function FloorplanStep({
 			const width = x2 - x1;
 			const height = y2 - y1;
 
-			// Set colors based on boundary class
-			let fillColor = "rgba(139, 69, 19, 0.2)"; // brown for walls
-			let strokeColor = "#8B4513"; // brown
-
-			if (boundary.class === "window") {
-				fillColor = "rgba(135, 206, 235, 0.3)"; // light blue
-				strokeColor = "#87CEEB";
-			} else if (boundary.class === "door") {
-				fillColor = "rgba(139, 90, 43, 0.25)"; // tan
-				strokeColor = "#8B5A2B";
-			}
-
-			// Draw boundary background
-			ctx.fillStyle = fillColor;
+			// Dark brown for walls - fully filled
+			ctx.fillStyle = "rgba(61, 43, 31, 0.8)"; // dark brown
 			ctx.fillRect(x1, y1, width, height);
 
-			// Draw boundary outline - solid line (not dashed like draggable furniture)
-			ctx.strokeStyle = strokeColor;
+			// Draw boundary outline
+			ctx.strokeStyle = "#3D2B1F"; // dark brown
+			ctx.lineWidth = 1;
+			ctx.setLineDash([]); // solid line
+			ctx.strokeRect(x1, y1, width, height);
+		});
+
+		// Second pass: Draw doors
+		floorplanBoundaries.forEach((boundary) => {
+			if (!boundary.bbox_normalized || !img || boundary.class !== "door") return;
+
+			// Convert normalized bbox to canvas coordinates
+			const x1 = boundary.bbox_normalized.x1 * img.width;
+			const y1 = boundary.bbox_normalized.y1 * img.height;
+			const x2 = boundary.bbox_normalized.x2 * img.width;
+			const y2 = boundary.bbox_normalized.y2 * img.height;
+			const width = x2 - x1;
+			const height = y2 - y1;
+
+			// Tan/brown for doors - fully filled
+			ctx.fillStyle = "rgba(139, 90, 43, 0.7)"; // tan
+			ctx.fillRect(x1, y1, width, height);
+
+			// Draw boundary outline
+			ctx.strokeStyle = "#8B5A2B"; // darker tan
+			ctx.lineWidth = 2;
+			ctx.setLineDash([]); // solid line
+			ctx.strokeRect(x1, y1, width, height);
+		});
+
+		// Third pass: Draw windows (on top of everything)
+		floorplanBoundaries.forEach((boundary) => {
+			if (!boundary.bbox_normalized || !img || boundary.class !== "window") return;
+
+			// Convert normalized bbox to canvas coordinates
+			const x1 = boundary.bbox_normalized.x1 * img.width;
+			const y1 = boundary.bbox_normalized.y1 * img.height;
+			const x2 = boundary.bbox_normalized.x2 * img.width;
+			const y2 = boundary.bbox_normalized.y2 * img.height;
+			const width = x2 - x1;
+			const height = y2 - y1;
+
+			// Light blue for windows - fully filled
+			ctx.fillStyle = "rgba(135, 206, 235, 0.7)"; // light blue
+			ctx.fillRect(x1, y1, width, height);
+
+			// Draw boundary outline
+			ctx.strokeStyle = "#87CEEB"; // sky blue
 			ctx.lineWidth = 2;
 			ctx.setLineDash([]); // solid line
 			ctx.strokeRect(x1, y1, width, height);
