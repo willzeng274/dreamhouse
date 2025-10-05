@@ -12,13 +12,17 @@ export const api = {
 			});
 
 			if (!response.ok) {
-				throw new Error(`Failed to generate floorplan: ${response.statusText}`);
+				throw new Error(
+					`Failed to generate floorplan: ${response.statusText}`
+				);
 			}
 
 			return response.blob();
 		},
 
-		async extract(floorplanFile: File): Promise<{ objects: any[]; boundaries: any[] }> {
+		async extract(
+			floorplanFile: File
+		): Promise<{ objects: any[]; boundaries: any[] }> {
 			const formData = new FormData();
 			formData.append("floorplan", floorplanFile);
 
@@ -42,7 +46,9 @@ export const api = {
 			const base64Data = await base64Promise;
 			console.log("Base64 image data URL:", base64Data);
 			console.log("Full base64 length:", base64Data.length);
-			console.log("Note: Extract endpoint does not use a text prompt parameter");
+			console.log(
+				"Note: Extract endpoint does not use a text prompt parameter"
+			);
 			console.log("=========================================");
 
 			const response = await fetch(`${API_BASE_URL}/floorplan/extract`, {
@@ -51,23 +57,25 @@ export const api = {
 			});
 
 			if (!response.ok) {
-				throw new Error(`Failed to extract objects: ${response.statusText}`);
+				throw new Error(
+					`Failed to extract objects: ${response.statusText}`
+				);
 			}
 
 			const result = await response.json();
 			console.log("=== EXTRACT ENDPOINT: Response ===");
 			console.log("Objects extracted:", result.objects?.length || 0);
-			console.log("Boundaries extracted:", result.boundaries?.length || 0);
+			console.log(
+				"Boundaries extracted:",
+				result.boundaries?.length || 0
+			);
 			console.table(result.objects?.slice(0, 5)); // Log first 5 objects
 			console.log("=========================================");
 
 			return result;
 		},
 
-		async revise(
-			floorplanFile: File,
-			instruction: string
-		): Promise<Blob> {
+		async revise(floorplanFile: File, instruction: string): Promise<Blob> {
 			const formData = new FormData();
 			formData.append("annotated_floorplan", floorplanFile);
 			formData.append("instruction", instruction);
@@ -78,10 +86,51 @@ export const api = {
 			});
 
 			if (!response.ok) {
-				throw new Error(`Failed to revise floorplan: ${response.statusText}`);
+				throw new Error(
+					`Failed to revise floorplan: ${response.statusText}`
+				);
 			}
 
 			return response.blob();
+		},
+
+		async updateFloorPlan(data: {
+			objects: any[];
+			boundaries: any[];
+		}): Promise<{ status: string; message: string }> {
+			console.log("=== UPDATE FLOOR PLAN: Sending to Backend ===");
+			console.log(
+				"Endpoint:",
+				`${API_BASE_URL}/floorplan/update-floor-plan`
+			);
+			console.log("Objects count:", data.objects?.length || 0);
+			console.log("Boundaries count:", data.boundaries?.length || 0);
+			console.log("=========================================");
+
+			const response = await fetch(
+				`${API_BASE_URL}/floorplan/update-floor-plan`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify(data),
+				}
+			);
+
+			if (!response.ok) {
+				throw new Error(
+					`Failed to update floor plan: ${response.statusText}`
+				);
+			}
+
+			const result = await response.json();
+			console.log("=== UPDATE FLOOR PLAN: Response ===");
+			console.log("Status:", result.status);
+			console.log("Message:", result.message);
+			console.log("=========================================");
+
+			return result;
 		},
 	},
 
@@ -116,7 +165,9 @@ export const api = {
 			});
 
 			if (!response.ok) {
-				throw new Error(`Failed to export scene: ${response.statusText}`);
+				throw new Error(
+					`Failed to export scene: ${response.statusText}`
+				);
 			}
 
 			return response.json();

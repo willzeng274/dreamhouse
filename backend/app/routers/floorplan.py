@@ -65,7 +65,9 @@ async def extract_objects(floorplan: UploadFile = File(...)):
     objects_data = await service.extract_objects(floorplan_bytes)
 
     boundary_service = BoundaryExtractionService()
-    boundaries_data = await boundary_service.extract_boundaries(floorplan_bytes, debug=True)
+    boundaries_data = await boundary_service.extract_boundaries(
+        floorplan_bytes, debug=True
+    )
 
     response_data = {
         "objects": objects_data, 

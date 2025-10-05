@@ -30,6 +30,7 @@ class MingLunService:
                 floorplan_bytes, conf=0.4, iou=0.9
             )
         )
+        
 
         # The classified_objects already have the correct format from segmentation_service
         # Just need to add id field, type field, and ensure correct types

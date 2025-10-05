@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useAppStore } from "@/store/useAppStore";
-import { useExtractObjects } from "@/hooks/useApi";
+import { useExtractObjects, useUpdateFloorPlan } from "@/hooks/useApi";
+import { FloorplanObject } from "@/lib/types";
 
 interface FloorplanStepProps {
 	onNext: () => void;
@@ -49,6 +50,7 @@ export default function FloorplanStep({
 		(state) => state.floorplanBoundaries
 	);
 	const extractObjects = useExtractObjects();
+	const updateFloorPlan = useUpdateFloorPlan();
 
 	// Load floorplan image
 	useEffect(() => {
@@ -163,6 +165,14 @@ export default function FloorplanStep({
 		}
 	}, [floorplanBlob, floorplanObjects.length]);
 
+	// Log JSON representation when floorplanObjects changes
+	useEffect(() => {
+		console.log(
+			"📋 Floorplan Objects JSON:",
+			JSON.stringify(floorplanObjects, null, 2)
+		);
+	}, [floorplanObjects]);
+
 	const [showFurnitureModal, setShowFurnitureModal] = useState(false);
 	const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
 	const [selectedFurnitureId, setSelectedFurnitureId] = useState<
@@ -172,6 +182,11 @@ export default function FloorplanStep({
 	const [dragOffset, setDragOffset] = useState<[number, number]>([0, 0]);
 	const [hasDragged, setHasDragged] = useState(false);
 	const [dragStartPos, setDragStartPos] = useState<[number, number]>([0, 0]);
+	const [resizingId, setResizingId] = useState<string | null>(null);
+	const [resizeHandle, setResizeHandle] = useState<string | null>(null);
+	const [resizeStartBounds, setResizeStartBounds] = useState<any>(null);
+	const [rotatingId, setRotatingId] = useState<string | null>(null);
+	const [rotationStartAngle, setRotationStartAngle] = useState<number>(0);
 
 	// Pan and zoom state
 	const [transform, setTransform] = useState<Transform>({
@@ -192,48 +207,113 @@ export default function FloorplanStep({
 		Record<string, HTMLImageElement>
 	>({});
 
-	const handleAddFurniture = (furnitureName: string) => {
-		if (selectedFurnitureId) {
-			// Switch existing furniture
-			setFurnitureItems(
-				furnitureItems.map((item) =>
-					item.id === selectedFurnitureId
-						? {
-								...item,
-								type: furnitureName
-									.toLowerCase()
-									.replace(/\s+/g, "_"),
-								image: `https://placehold.co/${
-									item.dimensions[0]
-								}x${
-									item.dimensions[1]
-								}/E07B47/white?text=${encodeURIComponent(
-									furnitureName
-								)}`,
-						  }
-						: item
-				)
-			);
-			setSelectedFurnitureId(null);
-		} else {
-			// Add new furniture
-			const newItem: FurnitureItem = {
-				id: Date.now().toString(),
-				type: furnitureName.toLowerCase().replace(/\s+/g, "_"),
-				image: `https://placehold.co/100x100/E07B47/white?text=${encodeURIComponent(
-					furnitureName
-				)}`,
-				position: [300, 200],
-				dimensions: [100, 100],
-			};
-			setFurnitureItems([...furnitureItems, newItem]);
-		}
-		setShowFurnitureModal(false);
+	// Color picker state
+	const [showColorPicker, setShowColorPicker] = useState(false);
+	const [objectColors, setObjectColors] = useState<Record<string, string>>(
+		{}
+	);
+	const [objectModels, setObjectModels] = useState<Record<string, number>>(
+		{}
+	);
+	const [modelImages, setModelImages] = useState<
+		Record<string, HTMLImageElement[]>
+	>({});
+
+	// Rotation control state
+	const [showRotationControl, setShowRotationControl] = useState(false);
+
+	// Model number to color mapping
+	const modelColorMap: Record<number, string> = {
+		1: "#4A7CFF", // Blue
+		2: "#EF4444", // Red
+		3: "#10B981", // Green
+		4: "#F59E0B", // Yellow
+		5: "#8B5CF6", // Purple
 	};
 
 	const setFloorplanObjects = useAppStore(
 		(state) => state.setFloorplanObjects
 	);
+
+	const handleAddFurniture = (furnitureName: string) => {
+		if (selectedFurnitureId) {
+			// Switch existing furniture type
+			const detectedObj = floorplanObjects.find(
+				(obj) => obj.id === selectedFurnitureId
+			);
+
+			if (detectedObj) {
+				// Update detected object type
+				setFloorplanObjects(
+					floorplanObjects.map((obj) =>
+						obj.id === selectedFurnitureId
+							? {
+									...obj,
+									type: furnitureName.toLowerCase(),
+									name: furnitureName.toLowerCase(),
+							  }
+							: obj
+					)
+				);
+			} else {
+				// Update manually added furniture
+				setFurnitureItems(
+					furnitureItems.map((item) =>
+						item.id === selectedFurnitureId
+							? {
+									...item,
+									type: furnitureName
+										.toLowerCase()
+										.replace(/\s+/g, "_"),
+									image: `https://placehold.co/${
+										item.dimensions[0]
+									}x${
+										item.dimensions[1]
+									}/E07B47/white?text=${encodeURIComponent(
+										furnitureName
+									)}`,
+							  }
+							: item
+					)
+				);
+			}
+			setSelectedFurnitureId(null);
+		} else {
+			// Add new furniture as detected object
+			const img = floorplanImageRef.current;
+			if (!img) return;
+
+			const newId = `manual-${Date.now()}`;
+			const furnitureType = furnitureName.toLowerCase();
+
+			// Add to center of viewport with default size
+			const newObject: FloorplanObject = {
+				id: newId,
+				type: furnitureType,
+				name: furnitureType,
+				model: 1, // Default to model 1
+				position: {
+					x: 0.5,
+					y: 0.5,
+				},
+				dimensions: {
+					width: 0.2,
+					height: 0.2,
+				},
+				rotation: 0,
+				bbox_normalized: {
+					x1: 0.4,
+					y1: 0.4,
+					x2: 0.6,
+					y2: 0.6,
+				},
+				confidence: "high",
+			};
+
+			setFloorplanObjects([...floorplanObjects, newObject]);
+		}
+		setShowFurnitureModal(false);
+	};
 
 	const handleDeleteFurniture = () => {
 		if (selectedFurnitureId) {
@@ -344,15 +424,24 @@ export default function FloorplanStep({
 			const height = y2 - y1;
 
 			if (showRectangles) {
-				// Debug view: Draw rectangles
-				ctx.fillStyle = "rgba(74, 124, 255, 0.15)";
+				// Debug view: Draw rectangles with custom colors
+				const modelNum = objectModels[obj.id] || 1;
+				const customColor = objectColors[obj.id] || modelColorMap[1];
+				const hexToRgba = (hex: string, alpha: number) => {
+					const r = parseInt(hex.slice(1, 3), 16);
+					const g = parseInt(hex.slice(3, 5), 16);
+					const b = parseInt(hex.slice(5, 7), 16);
+					return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+				};
+
+				ctx.fillStyle = hexToRgba(customColor, 0.15);
 				ctx.fillRect(x1, y1, width, height);
 
 				ctx.strokeStyle = isSelected
 					? "#E07B47"
 					: isDragging
-					? "#4A7CFF"
-					: "#4A7CFF";
+					? customColor
+					: customColor;
 				ctx.lineWidth = isSelected || isDragging ? 2.5 : 2;
 				ctx.setLineDash([]);
 				ctx.strokeRect(x1, y1, width, height);
@@ -366,21 +455,29 @@ export default function FloorplanStep({
 				ctx.fillText(
 					label.toUpperCase(),
 					x1 + width / 2,
-					y1 + height / 2
+					y1 + height / 2 - 8
 				);
 
-				// Draw confidence indicator
-				const confidence = obj.confidence || "unknown";
-				const confidenceColor =
-					confidence === "high"
-						? "#10B981"
-						: confidence === "medium"
-						? "#F59E0B"
-						: "#EF4444";
-				ctx.fillStyle = confidenceColor;
+				// Draw model number
+				ctx.fillStyle = customColor;
+				ctx.font = "bold 10px sans-serif";
+				ctx.fillText(
+					`Model #${modelNum}`,
+					x1 + width / 2,
+					y1 + height / 2 + 8
+				);
+
+				// Draw model indicator in top-left corner
+				ctx.fillStyle = customColor;
 				ctx.beginPath();
-				ctx.arc(x1 + 6, y1 + 6, 4, 0, Math.PI * 2);
+				ctx.arc(x1 + 10, y1 + 10, 6, 0, Math.PI * 2);
 				ctx.fill();
+
+				ctx.fillStyle = "white";
+				ctx.font = "bold 9px sans-serif";
+				ctx.textAlign = "center";
+				ctx.textBaseline = "middle";
+				ctx.fillText(modelNum.toString(), x1 + 10, y1 + 10);
 			} else {
 				// Normal view: Draw furniture icon
 				const furnitureType = obj.type || obj.name;
@@ -451,14 +548,140 @@ export default function FloorplanStep({
 				}
 			}
 
-			// Draw delete button when selected (always visible)
+			// Draw resize handles, rotation handle, and delete button when selected
 			if (isSelected) {
-				const deleteX = x2;
-				const deleteY = y1;
+				const centerX = x1 + width / 2;
+				const centerY = y1 + height / 2;
+				const rotation = obj.rotation || 0;
+				const rotationRad = (rotation * Math.PI) / 180;
+
+				// Helper function to rotate a point around the center
+				const rotatePoint = (px: number, py: number) => {
+					const dx = px - centerX;
+					const dy = py - centerY;
+					return {
+						x:
+							centerX +
+							dx * Math.cos(rotationRad) -
+							dy * Math.sin(rotationRad),
+						y:
+							centerY +
+							dx * Math.sin(rotationRad) +
+							dy * Math.cos(rotationRad),
+					};
+				};
+
+				// Draw rotated border
+				ctx.save();
+				ctx.translate(centerX, centerY);
+				ctx.rotate(rotationRad);
+				ctx.translate(-centerX, -centerY);
+
+				ctx.strokeStyle = "#E07B47";
+				ctx.lineWidth = 2;
+				ctx.setLineDash([]);
+				ctx.strokeRect(x1, y1, width, height);
+
+				ctx.restore();
+
+				// Draw resize handles (8 handles: 4 corners + 4 edges)
+				const handleSize = 8;
+				const handlePositions = [
+					{ x: x1, y: y1, id: "nw" }, // Top-left
+					{ x: x1 + width / 2, y: y1, id: "n" }, // Top-center
+					{ x: x2, y: y1, id: "ne" }, // Top-right (will be delete button)
+					{ x: x2, y: y1 + height / 2, id: "e" }, // Right-center
+					{ x: x2, y: y2, id: "se" }, // Bottom-right
+					{ x: x1 + width / 2, y: y2, id: "s" }, // Bottom-center
+					{ x: x1, y: y2, id: "sw" }, // Bottom-left
+					{ x: x1, y: y1 + height / 2, id: "w" }, // Left-center
+				];
+
+				handlePositions.forEach((handle) => {
+					if (handle.id !== "ne") {
+						// Skip top-right corner (reserved for delete button)
+						const rotated = rotatePoint(handle.x, handle.y);
+
+						ctx.save();
+						ctx.translate(rotated.x, rotated.y);
+						ctx.rotate(rotationRad);
+
+						ctx.fillStyle = "#E07B47";
+						ctx.fillRect(
+							-handleSize / 2,
+							-handleSize / 2,
+							handleSize,
+							handleSize
+						);
+						ctx.strokeStyle = "white";
+						ctx.lineWidth = 2;
+						ctx.strokeRect(
+							-handleSize / 2,
+							-handleSize / 2,
+							handleSize,
+							handleSize
+						);
+
+						ctx.restore();
+					}
+				});
+
+				// Draw rotation handle above the object
+				const rotationHandleDistance = 30;
+				const topCenterY = y1;
+				const rotationHandleY = topCenterY - rotationHandleDistance;
+				const rotatedHandle = rotatePoint(centerX, rotationHandleY);
+				const rotatedTopCenter = rotatePoint(centerX, y1);
+				const rotationHandleRadius = 10;
+
+				// Draw line connecting to object
+				ctx.strokeStyle = "#4A7CFF";
+				ctx.lineWidth = 2;
+				ctx.setLineDash([4, 4]);
+				ctx.beginPath();
+				ctx.moveTo(rotatedTopCenter.x, rotatedTopCenter.y);
+				ctx.lineTo(rotatedHandle.x, rotatedHandle.y);
+				ctx.stroke();
+				ctx.setLineDash([]);
+
+				// Draw rotation handle circle
+				ctx.fillStyle = "#4A7CFF";
+				ctx.beginPath();
+				ctx.arc(
+					rotatedHandle.x,
+					rotatedHandle.y,
+					rotationHandleRadius,
+					0,
+					Math.PI * 2
+				);
+				ctx.fill();
+
+				ctx.strokeStyle = "white";
+				ctx.lineWidth = 2;
+				ctx.stroke();
+
+				// Draw rotation icon (circular arrow)
+				ctx.save();
+				ctx.translate(rotatedHandle.x, rotatedHandle.y);
+				ctx.strokeStyle = "white";
+				ctx.lineWidth = 2;
+				ctx.beginPath();
+				ctx.arc(0, 0, 5, 0.2 * Math.PI, 1.8 * Math.PI);
+				ctx.stroke();
+				// Arrow head
+				ctx.beginPath();
+				ctx.moveTo(4, -3);
+				ctx.lineTo(6, -1);
+				ctx.lineTo(4, 1);
+				ctx.stroke();
+				ctx.restore();
+
+				// Draw delete button at top-right corner
+				const deletePos = rotatePoint(x2, y1);
 
 				ctx.fillStyle = "#EF4444";
 				ctx.beginPath();
-				ctx.arc(deleteX, deleteY, 12, 0, Math.PI * 2);
+				ctx.arc(deletePos.x, deletePos.y, 12, 0, Math.PI * 2);
 				ctx.fill();
 
 				ctx.strokeStyle = "white";
@@ -469,7 +692,7 @@ export default function FloorplanStep({
 				ctx.font = "bold 14px sans-serif";
 				ctx.textAlign = "center";
 				ctx.textBaseline = "middle";
-				ctx.fillText("×", deleteX, deleteY);
+				ctx.fillText("×", deletePos.x, deletePos.y);
 			}
 		});
 
@@ -627,10 +850,14 @@ export default function FloorplanStep({
 		furnitureItems,
 		selectedFurnitureId,
 		draggingId,
+		resizingId,
+		rotatingId,
 		floorplanObjects,
 		floorplanBoundaries,
 		showRectangles,
 		furnitureIcons,
+		objectColors,
+		objectModels,
 	]);
 
 	// Initialize canvas size
@@ -650,6 +877,129 @@ export default function FloorplanStep({
 		window.addEventListener("resize", updateCanvasSize);
 		return () => window.removeEventListener("resize", updateCanvasSize);
 	}, []);
+
+	// Check if click is on rotation handle
+	const getRotationHandleAtPosition = (
+		canvasX: number,
+		canvasY: number,
+		objId: string
+	): boolean => {
+		const canvas = canvasRef.current;
+		const img = floorplanImageRef.current;
+		if (!canvas || !img) return false;
+
+		const obj = floorplanObjects.find((o) => o.id === objId);
+		if (!obj || !obj.bbox_normalized) return false;
+
+		const offsetX = (canvas.width / transform.scale - img.width) / 2;
+		const offsetY = (canvas.height / transform.scale - img.height) / 2;
+
+		const x1 = offsetX + obj.bbox_normalized.x1 * img.width;
+		const y1 = offsetY + obj.bbox_normalized.y1 * img.height;
+		const x2 = offsetX + obj.bbox_normalized.x2 * img.width;
+		const y2 = offsetY + obj.bbox_normalized.y2 * img.height;
+		const width = x2 - x1;
+		const height = y2 - y1;
+
+		const centerX = x1 + width / 2;
+		const centerY = y1 + height / 2;
+		const rotation = obj.rotation || 0;
+		const rotationRad = (rotation * Math.PI) / 180;
+
+		// Rotate the rotation handle position
+		const rotationHandleDistance = 30;
+		const localX = 0;
+		const localY = -height / 2 - rotationHandleDistance;
+
+		const rotatedX =
+			centerX +
+			localX * Math.cos(rotationRad) -
+			localY * Math.sin(rotationRad);
+		const rotatedY =
+			centerY +
+			localX * Math.sin(rotationRad) +
+			localY * Math.cos(rotationRad);
+
+		const rotationHandleRadius = 10;
+		const hitMargin = 5;
+
+		const dist = Math.sqrt(
+			Math.pow(canvasX - rotatedX, 2) + Math.pow(canvasY - rotatedY, 2)
+		);
+
+		return dist <= rotationHandleRadius + hitMargin;
+	};
+
+	// Check if click is on a resize handle
+	const getResizeHandleAtPosition = (
+		canvasX: number,
+		canvasY: number,
+		objId: string
+	): string | null => {
+		const canvas = canvasRef.current;
+		const img = floorplanImageRef.current;
+		if (!canvas || !img) return null;
+
+		const obj = floorplanObjects.find((o) => o.id === objId);
+		if (!obj || !obj.bbox_normalized) return null;
+
+		const offsetX = (canvas.width / transform.scale - img.width) / 2;
+		const offsetY = (canvas.height / transform.scale - img.height) / 2;
+
+		const x1 = offsetX + obj.bbox_normalized.x1 * img.width;
+		const y1 = offsetY + obj.bbox_normalized.y1 * img.height;
+		const x2 = offsetX + obj.bbox_normalized.x2 * img.width;
+		const y2 = offsetY + obj.bbox_normalized.y2 * img.height;
+		const width = x2 - x1;
+		const height = y2 - y1;
+
+		const centerX = x1 + width / 2;
+		const centerY = y1 + height / 2;
+		const rotation = obj.rotation || 0;
+		const rotationRad = (rotation * Math.PI) / 180;
+
+		// Helper function to rotate a point around the center
+		const rotatePoint = (px: number, py: number) => {
+			const dx = px - centerX;
+			const dy = py - centerY;
+			return {
+				x:
+					centerX +
+					dx * Math.cos(rotationRad) -
+					dy * Math.sin(rotationRad),
+				y:
+					centerY +
+					dx * Math.sin(rotationRad) +
+					dy * Math.cos(rotationRad),
+			};
+		};
+
+		const handleSize = 8;
+		const hitMargin = 4; // Extra margin for easier clicking
+
+		const handles = [
+			{ x: x1, y: y1, id: "nw" },
+			{ x: x1 + width / 2, y: y1, id: "n" },
+			{ x: x2, y: y2, id: "se" },
+			{ x: x1 + width / 2, y: y2, id: "s" },
+			{ x: x1, y: y2, id: "sw" },
+			{ x: x1, y: y1 + height / 2, id: "w" },
+			{ x: x2, y: y1 + height / 2, id: "e" },
+		];
+
+		for (const handle of handles) {
+			const rotated = rotatePoint(handle.x, handle.y);
+			const dist = Math.sqrt(
+				Math.pow(canvasX - rotated.x, 2) +
+					Math.pow(canvasY - rotated.y, 2)
+			);
+			if (dist <= handleSize / 2 + hitMargin) {
+				return handle.id;
+			}
+		}
+
+		return null;
+	};
 
 	// Check if click is on furniture
 	const getFurnitureAtPosition = (
@@ -687,10 +1037,27 @@ export default function FloorplanStep({
 				return obj.id;
 			}
 
-			// Check delete button
+			// Check delete button (rotated)
 			if (selectedFurnitureId === obj.id) {
-				const deleteX = x2;
-				const deleteY = y1;
+				const width = x2 - x1;
+				const height = y2 - y1;
+				const centerX = x1 + width / 2;
+				const centerY = y1 + height / 2;
+				const rotation = obj.rotation || 0;
+				const rotationRad = (rotation * Math.PI) / 180;
+
+				// Calculate rotated delete button position (top-right corner)
+				const dx = x2 - centerX;
+				const dy = y1 - centerY;
+				const deleteX =
+					centerX +
+					dx * Math.cos(rotationRad) -
+					dy * Math.sin(rotationRad);
+				const deleteY =
+					centerY +
+					dx * Math.sin(rotationRad) +
+					dy * Math.cos(rotationRad);
+
 				const dist = Math.sqrt(
 					Math.pow(canvasX - deleteX, 2) +
 						Math.pow(canvasY - deleteY, 2)
@@ -741,6 +1108,77 @@ export default function FloorplanStep({
 		const screenY = e.clientY - rect.top;
 		const canvasCoords = screenToCanvas(screenX, screenY);
 
+		// Check if clicking on rotation handle of the selected object
+		if (selectedFurnitureId) {
+			const isRotationHandle = getRotationHandleAtPosition(
+				canvasCoords.x,
+				canvasCoords.y,
+				selectedFurnitureId
+			);
+
+			if (isRotationHandle) {
+				const obj = floorplanObjects.find(
+					(o) => o.id === selectedFurnitureId
+				);
+				if (obj && obj.bbox_normalized) {
+					const img = floorplanImageRef.current;
+					if (!img) return;
+
+					const offsetX =
+						(canvas.width / transform.scale - img.width) / 2;
+					const offsetY =
+						(canvas.height / transform.scale - img.height) / 2;
+
+					const x1 = offsetX + obj.bbox_normalized.x1 * img.width;
+					const y1 = offsetY + obj.bbox_normalized.y1 * img.height;
+					const x2 = offsetX + obj.bbox_normalized.x2 * img.width;
+					const y2 = offsetY + obj.bbox_normalized.y2 * img.height;
+
+					const centerX = x1 + (x2 - x1) / 2;
+					const centerY = y1 + (y2 - y1) / 2;
+
+					// Calculate initial angle from center to mouse
+					const angle =
+						Math.atan2(
+							canvasCoords.y - centerY,
+							canvasCoords.x - centerX
+						) *
+						(180 / Math.PI);
+
+					setRotatingId(selectedFurnitureId);
+					setRotationStartAngle(angle - (obj.rotation || 0));
+					setHasDragged(false);
+					setDragStartPos([e.clientX, e.clientY]);
+				}
+				return;
+			}
+
+			// Check if clicking on a resize handle of the selected object
+			const handle = getResizeHandleAtPosition(
+				canvasCoords.x,
+				canvasCoords.y,
+				selectedFurnitureId
+			);
+
+			if (handle) {
+				const obj = floorplanObjects.find(
+					(o) => o.id === selectedFurnitureId
+				);
+				if (obj && obj.bbox_normalized) {
+					setResizingId(selectedFurnitureId);
+					setResizeHandle(handle);
+					setResizeStartBounds({
+						...obj.bbox_normalized,
+						startX: canvasCoords.x,
+						startY: canvasCoords.y,
+					});
+					setHasDragged(false);
+					setDragStartPos([e.clientX, e.clientY]);
+				}
+				return;
+			}
+		}
+
 		const furnitureId = getFurnitureAtPosition(
 			canvasCoords.x,
 			canvasCoords.y
@@ -769,6 +1207,10 @@ export default function FloorplanStep({
 
 			// Start dragging furniture
 			const item = furnitureItems.find((f) => f.id === furnitureId);
+			const detectedObj = floorplanObjects.find(
+				(obj) => obj.id === furnitureId
+			);
+
 			if (item) {
 				const offsetX = (canvas.width / transform.scale - 720) / 2;
 				const offsetY = (canvas.height / transform.scale - 560) / 2;
@@ -780,6 +1222,24 @@ export default function FloorplanStep({
 					canvasCoords.x - (item.position[0] + offsetX),
 					canvasCoords.y - (item.position[1] + offsetY),
 				]);
+			} else if (detectedObj && detectedObj.bbox_normalized) {
+				// Dragging detected object
+				const img = floorplanImageRef.current;
+				if (!img) return;
+
+				const offsetX =
+					(canvas.width / transform.scale - img.width) / 2;
+				const offsetY =
+					(canvas.height / transform.scale - img.height) / 2;
+
+				const x1 = offsetX + detectedObj.bbox_normalized.x1 * img.width;
+				const y1 =
+					offsetY + detectedObj.bbox_normalized.y1 * img.height;
+
+				setDraggingId(furnitureId);
+				setHasDragged(false);
+				setDragStartPos([e.clientX, e.clientY]);
+				setDragOffset([canvasCoords.x - x1, canvasCoords.y - y1]);
 			}
 		} else {
 			// Start panning
@@ -792,7 +1252,182 @@ export default function FloorplanStep({
 		const canvas = canvasRef.current;
 		if (!canvas) return;
 
-		if (draggingId) {
+		if (rotatingId) {
+			// Handle rotation
+			const dx = e.clientX - dragStartPos[0];
+			const dy = e.clientY - dragStartPos[1];
+			const distance = Math.sqrt(dx * dx + dy * dy);
+
+			if (distance > 5) {
+				setHasDragged(true);
+			}
+
+			const rect = canvas.getBoundingClientRect();
+			const screenX = e.clientX - rect.left;
+			const screenY = e.clientY - rect.top;
+			const canvasCoords = screenToCanvas(screenX, screenY);
+
+			const obj = floorplanObjects.find((o) => o.id === rotatingId);
+			if (!obj || !obj.bbox_normalized) return;
+
+			const img = floorplanImageRef.current;
+			if (!img) return;
+
+			const offsetX = (canvas.width / transform.scale - img.width) / 2;
+			const offsetY = (canvas.height / transform.scale - img.height) / 2;
+
+			const x1 = offsetX + obj.bbox_normalized.x1 * img.width;
+			const y1 = offsetY + obj.bbox_normalized.y1 * img.height;
+			const x2 = offsetX + obj.bbox_normalized.x2 * img.width;
+			const y2 = offsetY + obj.bbox_normalized.y2 * img.height;
+
+			const centerX = x1 + (x2 - x1) / 2;
+			const centerY = y1 + (y2 - y1) / 2;
+
+			// Calculate current angle from center to mouse
+			const currentAngle =
+				Math.atan2(canvasCoords.y - centerY, canvasCoords.x - centerX) *
+				(180 / Math.PI);
+
+			// Calculate new rotation
+			let newRotation = currentAngle - rotationStartAngle;
+
+			// Normalize to 0-360 range
+			while (newRotation < 0) newRotation += 360;
+			while (newRotation >= 360) newRotation -= 360;
+
+			// Snap to 15-degree increments if shift key is held
+			if (e.shiftKey) {
+				newRotation = Math.round(newRotation / 15) * 15;
+			}
+
+			setFloorplanObjects(
+				floorplanObjects.map((o) =>
+					o.id === rotatingId
+						? { ...o, rotation: Math.round(newRotation) }
+						: o
+				)
+			);
+		} else if (resizingId && resizeHandle && resizeStartBounds) {
+			// Handle resizing
+			const dx = e.clientX - dragStartPos[0];
+			const dy = e.clientY - dragStartPos[1];
+			const distance = Math.sqrt(dx * dx + dy * dy);
+
+			if (distance > 5) {
+				setHasDragged(true);
+			}
+
+			const rect = canvas.getBoundingClientRect();
+			const screenX = e.clientX - rect.left;
+			const screenY = e.clientY - rect.top;
+			const canvasCoords = screenToCanvas(screenX, screenY);
+
+			const img = floorplanImageRef.current;
+			if (!img) return;
+
+			const offsetX = (canvas.width / transform.scale - img.width) / 2;
+			const offsetY = (canvas.height / transform.scale - img.height) / 2;
+
+			// Convert to normalized coordinates
+			const normalizedX = (canvasCoords.x - offsetX) / img.width;
+			const normalizedY = (canvasCoords.y - offsetY) / img.height;
+
+			setFloorplanObjects(
+				floorplanObjects.map((obj) => {
+					if (obj.id !== resizingId || !obj.bbox_normalized) {
+						return obj;
+					}
+
+					let newBounds = { ...obj.bbox_normalized };
+
+					// Handle different resize directions
+					switch (resizeHandle) {
+						case "nw":
+							newBounds.x1 = Math.min(
+								normalizedX,
+								newBounds.x2 - 0.05
+							);
+							newBounds.y1 = Math.min(
+								normalizedY,
+								newBounds.y2 - 0.05
+							);
+							break;
+						case "n":
+							newBounds.y1 = Math.min(
+								normalizedY,
+								newBounds.y2 - 0.05
+							);
+							break;
+						case "ne":
+							newBounds.x2 = Math.max(
+								normalizedX,
+								newBounds.x1 + 0.05
+							);
+							newBounds.y1 = Math.min(
+								normalizedY,
+								newBounds.y2 - 0.05
+							);
+							break;
+						case "e":
+							newBounds.x2 = Math.max(
+								normalizedX,
+								newBounds.x1 + 0.05
+							);
+							break;
+						case "se":
+							newBounds.x2 = Math.max(
+								normalizedX,
+								newBounds.x1 + 0.05
+							);
+							newBounds.y2 = Math.max(
+								normalizedY,
+								newBounds.y1 + 0.05
+							);
+							break;
+						case "s":
+							newBounds.y2 = Math.max(
+								normalizedY,
+								newBounds.y1 + 0.05
+							);
+							break;
+						case "sw":
+							newBounds.x1 = Math.min(
+								normalizedX,
+								newBounds.x2 - 0.05
+							);
+							newBounds.y2 = Math.max(
+								normalizedY,
+								newBounds.y1 + 0.05
+							);
+							break;
+						case "w":
+							newBounds.x1 = Math.min(
+								normalizedX,
+								newBounds.x2 - 0.05
+							);
+							break;
+					}
+
+					// Update dimensions based on new bounds
+					const width = (newBounds.x2 - newBounds.x1) * img.width;
+					const height = (newBounds.y2 - newBounds.y1) * img.height;
+
+					return {
+						...obj,
+						bbox_normalized: newBounds,
+						dimensions: {
+							width: newBounds.x2 - newBounds.x1,
+							height: newBounds.y2 - newBounds.y1,
+						},
+						position: {
+							x: (newBounds.x1 + newBounds.x2) / 2,
+							y: (newBounds.y1 + newBounds.y2) / 2,
+						},
+					};
+				})
+			);
+		} else if (draggingId) {
 			// Check if we've moved more than 5 pixels to distinguish drag from click
 			const dx = e.clientX - dragStartPos[0];
 			const dy = e.clientY - dragStartPos[1];
@@ -807,22 +1442,68 @@ export default function FloorplanStep({
 			const screenY = e.clientY - rect.top;
 			const canvasCoords = screenToCanvas(screenX, screenY);
 
-			const offsetX = (canvas.width / transform.scale - 720) / 2;
-			const offsetY = (canvas.height / transform.scale - 560) / 2;
+			// Check if dragging a manually added item
+			const item = furnitureItems.find((f) => f.id === draggingId);
+			if (item) {
+				const offsetX = (canvas.width / transform.scale - 720) / 2;
+				const offsetY = (canvas.height / transform.scale - 560) / 2;
 
-			setFurnitureItems(
-				furnitureItems.map((item) =>
-					item.id === draggingId
-						? {
-								...item,
-								position: [
-									canvasCoords.x - dragOffset[0] - offsetX,
-									canvasCoords.y - dragOffset[1] - offsetY,
-								],
-						  }
-						: item
-				)
-			);
+				setFurnitureItems(
+					furnitureItems.map((f) =>
+						f.id === draggingId
+							? {
+									...f,
+									position: [
+										canvasCoords.x -
+											dragOffset[0] -
+											offsetX,
+										canvasCoords.y -
+											dragOffset[1] -
+											offsetY,
+									],
+							  }
+							: f
+					)
+				);
+			} else {
+				// Dragging a detected object
+				const img = floorplanImageRef.current;
+				if (!img) return;
+
+				const offsetX =
+					(canvas.width / transform.scale - img.width) / 2;
+				const offsetY =
+					(canvas.height / transform.scale - img.height) / 2;
+
+				const newX1 = canvasCoords.x - dragOffset[0] - offsetX;
+				const newY1 = canvasCoords.y - dragOffset[1] - offsetY;
+
+				setFloorplanObjects(
+					floorplanObjects.map((obj) => {
+						if (obj.id === draggingId && obj.bbox_normalized) {
+							const width =
+								(obj.bbox_normalized.x2 -
+									obj.bbox_normalized.x1) *
+								img.width;
+							const height =
+								(obj.bbox_normalized.y2 -
+									obj.bbox_normalized.y1) *
+								img.height;
+
+							return {
+								...obj,
+								bbox_normalized: {
+									x1: newX1 / img.width,
+									y1: newY1 / img.height,
+									x2: (newX1 + width) / img.width,
+									y2: (newY1 + height) / img.height,
+								},
+							};
+						}
+						return obj;
+					})
+				);
+			}
 		} else if (isPanning) {
 			const dx = e.clientX - lastMousePos.x;
 			const dy = e.clientY - lastMousePos.y;
@@ -838,14 +1519,45 @@ export default function FloorplanStep({
 	};
 
 	const handleCanvasMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
+		if (rotatingId && !hasDragged) {
+			// Quick click on rotation handle - don't do anything special
+			setRotatingId(null);
+			setRotationStartAngle(0);
+			return;
+		}
+
+		if (resizingId && !hasDragged) {
+			// Quick click on resize handle - don't do anything special
+			setResizingId(null);
+			setResizeHandle(null);
+			setResizeStartBounds(null);
+			return;
+		}
+
 		if (draggingId && !hasDragged) {
-			// It was a click, not a drag - open furniture modal
+			// It was a click, not a drag
+			const isDetectedObj = floorplanObjects.some(
+				(obj) => obj.id === draggingId
+			);
+
 			setSelectedFurnitureId(draggingId);
-			setShowFurnitureModal(true);
+
+			if (isDetectedObj) {
+				// Open color picker for detected objects
+				setShowColorPicker(true);
+			} else {
+				// Open furniture modal for manually added items
+				setShowFurnitureModal(true);
+			}
 		}
 
 		setDraggingId(null);
 		setIsPanning(false);
+		setResizingId(null);
+		setResizeHandle(null);
+		setResizeStartBounds(null);
+		setRotatingId(null);
+		setRotationStartAngle(0);
 	};
 
 	const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
@@ -896,105 +1608,453 @@ export default function FloorplanStep({
 		});
 	};
 
-	const furnitureSidebar = showFurnitureModal && (
-		<div className='fixed inset-y-0 right-0 w-96 bg-white shadow-2xl z-50 flex flex-col animate-slide-in-right'>
-			{/* Sidebar Header */}
-			<div className='px-6 py-4 border-b border-[#E5E2DA] flex items-center justify-between'>
-				<div>
-					<h3 className='text-lg font-medium text-[#1A1815]'>
-						{selectedFurnitureId
-							? "Switch Furniture"
-							: "Choose Furniture"}
-					</h3>
-					{selectedFurnitureId && (
-						<p className='text-xs text-[#6B6862] mt-1'>
-							Currently:{" "}
-							{furnitureItems
-								.find((f) => f.id === selectedFurnitureId)
-								?.type.replace(/_/g, " ")
-								.toUpperCase()}
-						</p>
-					)}
-				</div>
-				<button
-					onClick={() => {
-						setShowFurnitureModal(false);
-						setSelectedFurnitureId(null);
-					}}
-					className='w-8 h-8 rounded-full hover:bg-[#F5F3EF] flex items-center justify-center text-[#6B6862] hover:text-[#1A1815] transition-colors'
-				>
-					×
-				</button>
-			</div>
+	const handleModelChange = (modelNumber: number) => {
+		if (selectedFurnitureId) {
+			const color = modelColorMap[modelNumber];
+			setObjectColors({
+				...objectColors,
+				[selectedFurnitureId]: color,
+			});
+			setObjectModels({
+				...objectModels,
+				[selectedFurnitureId]: modelNumber,
+			});
+		}
+		setShowColorPicker(false);
+		setSelectedFurnitureId(null);
+	};
 
-			{/* Sidebar Content */}
-			<div className='flex-1 overflow-y-auto p-6 space-y-4'>
-				{[
-					{
-						name: "Seating",
-						items: [
-							{ name: "Modern Sofa", icon: "🛋️" },
-							{ name: "Armchair", icon: "🪑" },
-							{ name: "Dining Chair", icon: "🪑" },
-							{ name: "Office Chair", icon: "💺" },
-						],
-					},
-					{
-						name: "Tables",
-						items: [
-							{ name: "Dining Table", icon: "🍽️" },
-							{ name: "Coffee Table", icon: "☕" },
-							{ name: "Desk", icon: "🖥️" },
-							{ name: "Console Table", icon: "🪞" },
-						],
-					},
-					{
-						name: "Beds",
-						items: [
-							{ name: "King Bed", icon: "🛏️" },
-							{ name: "Queen Bed", icon: "🛏️" },
-							{ name: "Single Bed", icon: "🛏️" },
-						],
-					},
-					{
-						name: "Storage",
-						items: [
-							{ name: "Wardrobe", icon: "🚪" },
-							{ name: "Bookshelf", icon: "📚" },
-							{ name: "Dresser", icon: "🗄️" },
-							{ name: "TV Unit", icon: "📺" },
-						],
-					},
-				].map((category) => (
-					<div key={category.name}>
-						<h4 className='text-sm font-medium text-[#1A1815] mb-3'>
-							{category.name}
-						</h4>
-						<div className='grid grid-cols-2 gap-3'>
-							{category.items.map((item) => (
+	const handleRotateObject = (degrees: number) => {
+		if (selectedFurnitureId) {
+			setFloorplanObjects(
+				floorplanObjects.map((obj) =>
+					obj.id === selectedFurnitureId
+						? {
+								...obj,
+								rotation: ((obj.rotation || 0) + degrees) % 360,
+						  }
+						: obj
+				)
+			);
+		}
+	};
+
+	const handleSetRotation = (rotation: number) => {
+		if (selectedFurnitureId) {
+			setFloorplanObjects(
+				floorplanObjects.map((obj) =>
+					obj.id === selectedFurnitureId
+						? {
+								...obj,
+								rotation: rotation,
+						  }
+						: obj
+				)
+			);
+		}
+	};
+
+	const handleContinueToRender = async () => {
+		console.log(
+			"🚀 Continue to Render clicked - Sending floor plan data to backend"
+		);
+
+		try {
+			// Send the current floor plan data to the backend
+			await updateFloorPlan.mutateAsync({
+				objects: floorplanObjects,
+				boundaries: floorplanBoundaries,
+			});
+
+			// Proceed to next step after successful update
+			onNext();
+		} catch (error) {
+			console.error("Failed to update floor plan:", error);
+			// You could show an error toast/notification here
+		}
+	};
+
+	const rotationControlModal =
+		showRotationControl &&
+		selectedFurnitureId &&
+		(() => {
+			const selectedObj = floorplanObjects.find(
+				(obj) => obj.id === selectedFurnitureId
+			);
+			const currentRotation = selectedObj?.rotation || 0;
+
+			return (
+				<div className='fixed inset-y-0 right-0 w-96 bg-white shadow-2xl z-50 flex flex-col animate-slide-in-right'>
+					{/* Rotation Control Header */}
+					<div className='px-6 py-4 border-b border-[#E5E2DA] flex items-center justify-between'>
+						<div>
+							<h3 className='text-lg font-medium text-[#1A1815]'>
+								Rotate Object
+							</h3>
+							<p className='text-xs text-[#6B6862] mt-1'>
+								Current rotation: {currentRotation}°
+							</p>
+						</div>
+						<button
+							onClick={() => {
+								setShowRotationControl(false);
+								setSelectedFurnitureId(null);
+							}}
+							className='w-8 h-8 rounded-full hover:bg-[#F5F3EF] flex items-center justify-center text-[#6B6862] hover:text-[#1A1815] transition-colors'
+						>
+							×
+						</button>
+					</div>
+
+					{/* Rotation Control Content */}
+					<div className='flex-1 overflow-y-auto p-6 space-y-6'>
+						<div>
+							<h4 className='text-sm font-medium text-[#1A1815] mb-3'>
+								Quick Rotate
+							</h4>
+							<div className='grid grid-cols-2 gap-3'>
 								<button
-									key={item.name}
-									onClick={() =>
-										handleAddFurniture(item.name)
-									}
-									className='bg-[#F5F3EF] hover:bg-[#E5E2DA] rounded-lg p-3 text-left transition-colors group'
+									onClick={() => handleRotateObject(-90)}
+									className='px-4 py-3 bg-[#F5F3EF] hover:bg-[#E5E2DA] rounded-lg text-sm font-medium transition-colors'
 								>
-									<div className='flex flex-col items-center gap-2 text-center'>
-										<span className='text-3xl'>
-											{item.icon}
-										</span>
-										<span className='text-xs text-[#1A1815] font-medium group-hover:text-[#E07B47] transition-colors'>
-											{item.name}
-										</span>
-									</div>
+									↺ 90° Left
 								</button>
-							))}
+								<button
+									onClick={() => handleRotateObject(90)}
+									className='px-4 py-3 bg-[#F5F3EF] hover:bg-[#E5E2DA] rounded-lg text-sm font-medium transition-colors'
+								>
+									↻ 90° Right
+								</button>
+								<button
+									onClick={() => handleRotateObject(-45)}
+									className='px-4 py-3 bg-[#F5F3EF] hover:bg-[#E5E2DA] rounded-lg text-sm font-medium transition-colors'
+								>
+									↺ 45° Left
+								</button>
+								<button
+									onClick={() => handleRotateObject(45)}
+									className='px-4 py-3 bg-[#F5F3EF] hover:bg-[#E5E2DA] rounded-lg text-sm font-medium transition-colors'
+								>
+									↻ 45° Right
+								</button>
+							</div>
+						</div>
+
+						<div>
+							<h4 className='text-sm font-medium text-[#1A1815] mb-3'>
+								Precise Rotation
+							</h4>
+							<div className='space-y-3'>
+								<input
+									type='range'
+									min='0'
+									max='360'
+									value={currentRotation}
+									onChange={(e) =>
+										handleSetRotation(
+											Number(e.target.value)
+										)
+									}
+									className='w-full h-2 bg-[#E5E2DA] rounded-lg appearance-none cursor-pointer'
+									style={{
+										background: `linear-gradient(to right, #E07B47 0%, #E07B47 ${
+											(currentRotation / 360) * 100
+										}%, #E5E2DA ${
+											(currentRotation / 360) * 100
+										}%, #E5E2DA 100%)`,
+									}}
+								/>
+								<div className='flex justify-between text-xs text-[#6B6862]'>
+									<span>0°</span>
+									<span>{currentRotation}°</span>
+									<span>360°</span>
+								</div>
+								<button
+									onClick={() => handleSetRotation(0)}
+									className='w-full px-4 py-2 bg-[#F5F3EF] hover:bg-[#E5E2DA] rounded-lg text-sm font-medium transition-colors'
+								>
+									Reset to 0°
+								</button>
+							</div>
+						</div>
+
+						<div>
+							<h4 className='text-sm font-medium text-[#1A1815] mb-3'>
+								Common Angles
+							</h4>
+							<div className='grid grid-cols-4 gap-2'>
+								{[0, 45, 90, 135, 180, 225, 270, 315].map(
+									(angle) => (
+										<button
+											key={angle}
+											onClick={() =>
+												handleSetRotation(angle)
+											}
+											className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+												currentRotation === angle
+													? "bg-[#E07B47] text-white"
+													: "bg-[#F5F3EF] hover:bg-[#E5E2DA] text-[#1A1815]"
+											}`}
+										>
+											{angle}°
+										</button>
+									)
+								)}
+							</div>
 						</div>
 					</div>
-				))}
-			</div>
-		</div>
-	);
+				</div>
+			);
+		})();
+
+	const colorPickerModal =
+		showColorPicker &&
+		selectedFurnitureId &&
+		(() => {
+			// Get the furniture type of the selected object
+			const selectedObj = floorplanObjects.find(
+				(obj) => obj.id === selectedFurnitureId
+			);
+			const furnitureType =
+				selectedObj?.type || selectedObj?.name || "bed";
+			const currentModel = objectModels[selectedFurnitureId] || 1;
+
+			return (
+				<div className='fixed inset-y-0 right-0 w-96 bg-white shadow-2xl z-50 flex flex-col animate-slide-in-right'>
+					{/* Color Picker Header */}
+					<div className='px-6 py-4 border-b border-[#E5E2DA] flex items-center justify-between'>
+						<div>
+							<h3 className='text-lg font-medium text-[#1A1815]'>
+								Choose Model
+							</h3>
+							<p className='text-xs text-[#6B6862] mt-1'>
+								{furnitureType} - Currently Model #
+								{currentModel}
+							</p>
+						</div>
+						<button
+							onClick={() => {
+								setShowColorPicker(false);
+								setSelectedFurnitureId(null);
+							}}
+							className='w-8 h-8 rounded-full hover:bg-[#F5F3EF] flex items-center justify-center text-[#6B6862] hover:text-[#1A1815] transition-colors'
+						>
+							×
+						</button>
+					</div>
+
+					{/* Model Picker Content */}
+					<div className='flex-1 overflow-y-auto p-6 space-y-4'>
+						<div>
+							<h4 className='text-sm font-medium text-[#1A1815] mb-3'>
+								Available Models
+							</h4>
+							<div className='grid grid-cols-2 gap-4'>
+								{[1, 2, 3, 4, 5].map((modelNum) => {
+									const color = modelColorMap[modelNum];
+									const imageUrl = `http://localhost:8000/static/floorplan_items/${encodeURIComponent(
+										furnitureType
+									)}/variation_${String(
+										modelNum - 1
+									).padStart(3, "0")}/product_image.png`;
+
+									return (
+										<button
+											key={modelNum}
+											onClick={() =>
+												handleModelChange(modelNum)
+											}
+											className={`flex flex-col items-center gap-2 p-3 rounded-lg hover:bg-[#F5F3EF] transition-colors border-2 ${
+												currentModel === modelNum
+													? "border-[#E07B47] bg-[#FFF5F0]"
+													: "border-[#E5E2DA]"
+											}`}
+											title={`Model ${modelNum}`}
+										>
+											<div
+												className='w-full aspect-square rounded-lg border-2 overflow-hidden bg-white'
+												style={{ borderColor: color }}
+											>
+												<img
+													src={imageUrl}
+													alt={`Model ${modelNum}`}
+													className='w-full h-full object-cover'
+													onError={(e) => {
+														// Fallback to color block if image fails
+														const target =
+															e.target as HTMLImageElement;
+														target.style.display =
+															"none";
+														if (
+															target.parentElement
+														) {
+															target.parentElement.style.backgroundColor =
+																color;
+														}
+													}}
+												/>
+											</div>
+											<div className='flex items-center gap-2'>
+												<div
+													className='w-3 h-3 rounded-full'
+													style={{
+														backgroundColor: color,
+													}}
+												/>
+												<span className='text-xs text-[#6B6862] font-medium'>
+													Model #{modelNum}
+												</span>
+											</div>
+										</button>
+									);
+								})}
+							</div>
+						</div>
+					</div>
+				</div>
+			);
+		})();
+
+	const furnitureSidebar =
+		showFurnitureModal &&
+		(() => {
+			// Get current furniture type
+			let currentType = "";
+			if (selectedFurnitureId) {
+				const detectedObj = floorplanObjects.find(
+					(obj) => obj.id === selectedFurnitureId
+				);
+				const manualItem = furnitureItems.find(
+					(f) => f.id === selectedFurnitureId
+				);
+
+				if (detectedObj) {
+					currentType = (
+						detectedObj.type ||
+						detectedObj.name ||
+						""
+					).replace(/_/g, " ");
+				} else if (manualItem) {
+					currentType = manualItem.type.replace(/_/g, " ");
+				}
+			}
+
+			return (
+				<div className='fixed inset-y-0 right-0 w-96 bg-white shadow-2xl z-50 flex flex-col animate-slide-in-right'>
+					{/* Sidebar Header */}
+					<div className='px-6 py-4 border-b border-[#E5E2DA] flex items-center justify-between'>
+						<div>
+							<h3 className='text-lg font-medium text-[#1A1815]'>
+								{selectedFurnitureId
+									? "Change Furniture Type"
+									: "Add New Furniture"}
+							</h3>
+							{selectedFurnitureId && currentType && (
+								<p className='text-xs text-[#6B6862] mt-1'>
+									Currently: {currentType.toUpperCase()}
+								</p>
+							)}
+						</div>
+						<button
+							onClick={() => {
+								setShowFurnitureModal(false);
+								setSelectedFurnitureId(null);
+							}}
+							className='w-8 h-8 rounded-full hover:bg-[#F5F3EF] flex items-center justify-center text-[#6B6862] hover:text-[#1A1815] transition-colors'
+						>
+							×
+						</button>
+					</div>
+
+					{/* Sidebar Content */}
+					<div className='flex-1 overflow-y-auto p-6 space-y-4'>
+						{[
+							{
+								name: "Seating",
+								items: [
+									{ name: "couch", icon: "🛋️" },
+									{ name: "chair", icon: "🪑" },
+								],
+							},
+							{
+								name: "Tables & Desks",
+								items: [
+									{ name: "table", icon: "🍽️" },
+									{ name: "desk", icon: "🖥️" },
+								],
+							},
+							{
+								name: "Bedroom",
+								items: [
+									{ name: "bed", icon: "🛏️" },
+									{ name: "dresser", icon: "🗄️" },
+								],
+							},
+							{
+								name: "Storage",
+								items: [
+									{ name: "closet", icon: "🚪" },
+									{ name: "cabinet", icon: "📚" },
+								],
+							},
+							{
+								name: "Kitchen",
+								items: [
+									{ name: "refrigerator", icon: "🧊" },
+									{ name: "oven", icon: "🔥" },
+									{ name: "dishwasher", icon: "🍽️" },
+									{ name: "kitchen counter", icon: "🪑" },
+								],
+							},
+							{
+								name: "Bathroom",
+								items: [
+									{ name: "toilet", icon: "🚽" },
+									{ name: "sink", icon: "🚰" },
+									{ name: "bathtub", icon: "🛁" },
+									{ name: "shower", icon: "🚿" },
+								],
+							},
+							{
+								name: "Structural",
+								items: [
+									{ name: "stairs", icon: "🪜" },
+									{ name: "door", icon: "🚪" },
+									{ name: "window", icon: "🪟" },
+									{ name: "wall", icon: "🧱" },
+								],
+							},
+						].map((category) => (
+							<div key={category.name}>
+								<h4 className='text-sm font-medium text-[#1A1815] mb-3'>
+									{category.name}
+								</h4>
+								<div className='grid grid-cols-2 gap-3'>
+									{category.items.map((item) => (
+										<button
+											key={item.name}
+											onClick={() =>
+												handleAddFurniture(item.name)
+											}
+											className='bg-[#F5F3EF] hover:bg-[#E5E2DA] rounded-lg p-3 text-left transition-colors group'
+										>
+											<div className='flex flex-col items-center gap-2 text-center'>
+												<span className='text-3xl'>
+													{item.icon}
+												</span>
+												<span className='text-xs text-[#1A1815] font-medium group-hover:text-[#E07B47] transition-colors'>
+													{item.name}
+												</span>
+											</div>
+										</button>
+									))}
+								</div>
+							</div>
+						))}
+					</div>
+				</div>
+			);
+		})();
 
 	return (
 		<>
@@ -1046,10 +2106,13 @@ export default function FloorplanStep({
 									← Back
 								</button>
 								<button
-									onClick={onNext}
-									className='px-6 py-2 rounded-lg text-sm font-medium bg-[#E07B47] text-white hover:bg-[#D06A36] transition-colors'
+									onClick={handleContinueToRender}
+									disabled={updateFloorPlan.isPending}
+									className='px-6 py-2 rounded-lg text-sm font-medium bg-[#E07B47] text-white hover:bg-[#D06A36] transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
 								>
-									Continue to Render →
+									{updateFloorPlan.isPending
+										? "Saving..."
+										: "Continue to Render →"}
 								</button>
 							</div>
 						</div>
@@ -1122,7 +2185,41 @@ export default function FloorplanStep({
 										onMouseLeave={handleCanvasMouseUp}
 										onWheel={handleWheel}
 										style={{
-											cursor: draggingId
+											cursor: rotatingId
+												? "grabbing"
+												: resizingId
+												? resizeHandle?.includes("n") &&
+												  resizeHandle?.includes("w")
+													? "nw-resize"
+													: resizeHandle?.includes(
+															"n"
+													  ) &&
+													  resizeHandle?.includes(
+															"e"
+													  )
+													? "ne-resize"
+													: resizeHandle?.includes(
+															"s"
+													  ) &&
+													  resizeHandle?.includes(
+															"w"
+													  )
+													? "sw-resize"
+													: resizeHandle?.includes(
+															"s"
+													  ) &&
+													  resizeHandle?.includes(
+															"e"
+													  )
+													? "se-resize"
+													: resizeHandle === "n" ||
+													  resizeHandle === "s"
+													? "ns-resize"
+													: resizeHandle === "e" ||
+													  resizeHandle === "w"
+													? "ew-resize"
+													: "grabbing"
+												: draggingId
 												? "grabbing"
 												: isPanning
 												? "grabbing"
@@ -1196,21 +2293,44 @@ export default function FloorplanStep({
 				{/* Add Furniture Button - Bottom Right */}
 				<div className='absolute bottom-8 right-8 flex flex-col gap-3 z-10'>
 					<button
-						onClick={() => setShowFurnitureModal(true)}
+						onClick={() => {
+							setSelectedFurnitureId(null);
+							setShowFurnitureModal(true);
+						}}
 						className='px-6 py-3 bg-[#E07B47] text-white rounded-full font-medium hover:bg-[#D06A36] transition-colors duration-200 shadow-lg'
 					>
 						+ Add Furniture
 					</button>
 					{selectedFurnitureId && (
-						<button
-							onClick={handleDeleteFurniture}
-							className='px-6 py-3 bg-[#EF4444] text-white rounded-full font-medium hover:bg-[#DC2626] transition-colors duration-200 shadow-lg'
-						>
-							Delete Selected
-						</button>
+						<>
+							<button
+								onClick={() => setShowRotationControl(true)}
+								className='px-6 py-3 bg-[#4A7CFF] text-white rounded-full font-medium hover:bg-[#3A6CEF] transition-colors duration-200 shadow-lg'
+							>
+								🔄 Rotate
+							</button>
+							<button
+								onClick={() => setShowFurnitureModal(true)}
+								className='px-6 py-3 bg-[#10B981] text-white rounded-full font-medium hover:bg-[#059669] transition-colors duration-200 shadow-lg'
+							>
+								🔧 Change Type
+							</button>
+							<button
+								onClick={handleDeleteFurniture}
+								className='px-6 py-3 bg-[#EF4444] text-white rounded-full font-medium hover:bg-[#DC2626] transition-colors duration-200 shadow-lg'
+							>
+								🗑️ Delete
+							</button>
+						</>
 					)}
 				</div>
 			</div>
+
+			{/* Rotation Control Modal */}
+			{rotationControlModal}
+
+			{/* Color Picker Modal */}
+			{colorPickerModal}
 
 			{/* Furniture Sidebar */}
 			{furnitureSidebar}

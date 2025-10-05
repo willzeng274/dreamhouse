@@ -33,6 +33,7 @@ export function useExtractObjects() {
 		mutationFn: async (floorplanFile: File) => {
 			console.log("Starting extraction mutation...");
 			const result = await api.floorplan.extract(floorplanFile);
+			console.log(result);
 			console.log("Extraction mutation completed");
 			return result;
 		},
@@ -98,6 +99,20 @@ export function useGeneratePhotorealistic() {
 			setRenderBlob(blob);
 			const dataUrl = await blobToDataUrl(blob);
 			setRenderDataUrl(dataUrl);
+		},
+	});
+}
+
+export function useUpdateFloorPlan() {
+	return useMutation({
+		mutationFn: async (data: { objects: any[]; boundaries: any[] }) => {
+			return await api.floorplan.updateFloorPlan(data);
+		},
+		onSuccess: (result) => {
+			console.log("✅ Floor plan updated successfully:", result.message);
+		},
+		onError: (error) => {
+			console.error("❌ Error updating floor plan:", error);
 		},
 	});
 }
