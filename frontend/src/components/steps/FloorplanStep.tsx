@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useAppStore } from "@/store/useAppStore";
+import { useExtractObjects } from "@/hooks/useApi";
 
 interface FloorplanStepProps {
 	onNext: () => void;
@@ -37,6 +39,20 @@ export default function FloorplanStep({
 }: FloorplanStepProps) {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
+
+	const floorplanBlob = useAppStore((state) => state.floorplanBlob);
+	const floorplanObjects = useAppStore((state) => state.floorplanObjects);
+	const extractObjects = useExtractObjects();
+
+	// Extract objects on mount if we have a floorplan but no objects
+	useEffect(() => {
+		if (floorplanBlob && floorplanObjects.length === 0 && !extractObjects.isPending) {
+			const file = new File([floorplanBlob], "floorplan.png", {
+				type: "image/png",
+			});
+			extractObjects.mutate(file);
+		}
+	}, [floorplanBlob]);
 
 	const [showFurnitureModal, setShowFurnitureModal] = useState(false);
 	const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
@@ -685,7 +701,7 @@ export default function FloorplanStep({
 									onClick={onNext}
 									className='px-6 py-2 rounded-lg text-sm font-medium bg-[#E07B47] text-white hover:bg-[#D06A36] transition-colors'
 								>
-									Generate 3D View →
+									Continue to Render →
 								</button>
 							</div>
 						</div>

@@ -3,6 +3,8 @@
 import { useRef, useState, useEffect } from "react";
 import { Stage, Layer, Line, Rect, Circle } from "react-konva";
 import Konva from "konva";
+import { Hand, Pencil, Minus, Square, CircleIcon, Eraser } from "lucide-react";
+import { useAppStore } from "@/store/useAppStore";
 
 interface SketchStepProps {
 	onNext: () => void;
@@ -46,6 +48,7 @@ export default function SketchStep({
 	setSketchData,
 }: SketchStepProps) {
 	const stageRef = useRef<Konva.Stage>(null);
+	const setSketchDataUrl = useAppStore((state) => state.setSketchDataUrl);
 	const [tool, setTool] = useState<
 		"pen" | "eraser" | "hand" | "rectangle" | "circle" | "line"
 	>("pen");
@@ -63,7 +66,6 @@ export default function SketchStep({
 	// Stage position and scale
 	const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
 	const [stageScale, setStageScale] = useState(1);
-	const [gridScale, setGridScale] = useState(1); // meters per square
 	const gridSize = 40; // pixels per square at scale 1
 
 	// Container size
@@ -285,6 +287,16 @@ export default function SketchStep({
 		setSketchData(JSON.stringify(data));
 	};
 
+	const handleContinue = () => {
+		// Save sketch as image to store
+		const stage = stageRef.current;
+		if (stage) {
+			const dataUrl = stage.toDataURL({ pixelRatio: 2 });
+			setSketchDataUrl(dataUrl);
+		}
+		onNext();
+	};
+
 	// Combine all elements with their order for proper eraser functionality
 	const getAllElementsInOrder = () => {
 		const elements: Array<{
@@ -374,28 +386,6 @@ export default function SketchStep({
 							Sketch
 						</h3>
 						<div className='flex items-center gap-2 flex-wrap'>
-							{/* Grid Scale */}
-							<div className='flex items-center gap-2 bg-[#F5F3EF] rounded-lg px-3 py-2'>
-								<label className='text-xs text-[#6B6862]'>
-									Grid:
-								</label>
-								<input
-									type='number'
-									min='0.1'
-									step='0.1'
-									value={gridScale}
-									onChange={(e) =>
-										setGridScale(
-											parseFloat(e.target.value) || 1
-										)
-									}
-									className='w-12 px-1 py-1 border border-[#E5E2DA] rounded text-xs'
-								/>
-								<span className='text-xs text-[#6B6862]'>
-									m
-								</span>
-							</div>
-
 							{/* Drawing Tools */}
 							<div className='flex items-center gap-1 bg-[#F5F3EF] rounded-lg p-1'>
 								<button
@@ -407,7 +397,7 @@ export default function SketchStep({
 									}`}
 									title='Hand Tool (Pan)'
 								>
-									✋
+									<Hand size={16} />
 								</button>
 								<button
 									onClick={() => setTool("pen")}
@@ -418,7 +408,7 @@ export default function SketchStep({
 									}`}
 									title='Pen Tool (Freehand)'
 								>
-									✏️
+									<Pencil size={16} />
 								</button>
 								<button
 									onClick={() => setTool("line")}
@@ -429,7 +419,7 @@ export default function SketchStep({
 									}`}
 									title='Line Tool (Straight)'
 								>
-									📏
+									<Minus size={16} />
 								</button>
 								<button
 									onClick={() => setTool("rectangle")}
@@ -440,7 +430,7 @@ export default function SketchStep({
 									}`}
 									title='Rectangle Tool'
 								>
-									▭
+									<Square size={16} />
 								</button>
 								<button
 									onClick={() => setTool("circle")}
@@ -451,7 +441,7 @@ export default function SketchStep({
 									}`}
 									title='Circle Tool'
 								>
-									◯
+									<CircleIcon size={16} />
 								</button>
 								<div className='relative'>
 									<button
@@ -466,7 +456,7 @@ export default function SketchStep({
 										}`}
 										title='Eraser Tool'
 									>
-										🧹
+										<Eraser size={16} />
 									</button>
 
 									{/* Eraser Size Popover */}
@@ -650,10 +640,10 @@ export default function SketchStep({
 								Reset View
 							</button>
 							<button
-								onClick={onNext}
+								onClick={handleContinue}
 								className='px-6 py-2 rounded-lg text-sm font-medium bg-[#E07B47] text-white hover:bg-[#D06A36] transition-colors'
 							>
-								Continue to Render →
+								Continue to Refine →
 							</button>
 						</div>
 					</div>

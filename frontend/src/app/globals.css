@@ -1,5 +1,59 @@
 @import "tailwindcss";
 
+/* Custom Theme */
+:root {
+	--color-text-primary: #1A1815;
+	--color-text-secondary: #6B6862;
+	--color-text-tertiary: #9B9892;
+
+	--color-bg-primary: #FFFFFF;
+	--color-bg-secondary: #F5F3EF;
+	--color-bg-tertiary: #E5E2DA;
+
+	--color-accent-primary: #E07B47;
+	--color-accent-hover: #D06A36;
+
+	--color-border-light: #E5E2DA;
+	--color-border-medium: #D5D2CA;
+
+	--shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+	--shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+	--shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+	--shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+}
+
+/* Base Styles */
+* {
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+/* Focus States */
+*:focus-visible {
+	outline: 2px solid var(--color-accent-primary);
+	outline-offset: 2px;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+
+::-webkit-scrollbar-track {
+	background: var(--color-bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--color-border-medium);
+	border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--color-text-secondary);
+}
+
+/* Animations */
 @keyframes slide-in-right {
 	from {
 		transform: translateX(100%);
@@ -11,4 +65,17 @@
 
 .animate-slide-in-right {
 	animation: slide-in-right 0.3s ease-out;
+}
+
+@keyframes fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+.animate-fade-in {
+	animation: fade-in 0.2s ease-out;
 }

@@ -21,25 +21,29 @@ export default function StepIndicator({
 					<div className='flex items-center gap-2 flex-col'>
 						<button
 							onClick={() => onStepClick(step.number)}
-							className={`flex items-center gap-3 size-8 justify-center rounded-full transition-all duration-300 ${
+							className={`flex items-center gap-3 size-9 justify-center rounded-full transition-all duration-200 ${
 								currentStep === step.number
-									? "bg-[#1A1815] text-white"
+									? "bg-[#1A1815] text-white shadow-md scale-110"
 									: currentStep > step.number
-									? "bg-[#E07B47] text-white hover:bg-[#D06A36]"
+									? "bg-[#E07B47] text-white hover:bg-[#D06A36] shadow-sm hover:shadow-md"
 									: "bg-[#E5E2DA] text-[#6B6862] hover:bg-[#D5D2CA]"
 							}`}
 						>
-							<span className='text-sm font-medium'>
+							<span className='text-sm font-semibold'>
 								{step.number}
 							</span>
 						</button>
-						<span className='text-sm font-medium'>
+						<span className={`text-sm font-medium transition-colors duration-200 ${
+							currentStep === step.number
+								? "text-[#1A1815]"
+								: "text-[#6B6862]"
+						}`}>
 							{step.title}
 						</span>
 					</div>
 					{index < steps.length - 1 && (
 						<div
-							className={`w-12 h-1 mx-1 transition-colors duration-300 mt-4 ${
+							className={`w-12 h-1 mx-1 rounded-full transition-all duration-300 mt-4 ${
 								currentStep > step.number
 									? "bg-[#E07B47]"
 									: "bg-[#E5E2DA]"
