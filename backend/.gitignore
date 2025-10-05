@@ -3,7 +3,10 @@
 
 .pytest_cache/
 
-.venv/
+venv/
+venv-3.12/
+venv-3.11/
+classification_debug/
 
 *.pyc
 __pycache__/
