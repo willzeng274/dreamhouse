@@ -45,7 +45,9 @@ export default function FloorplanStep({
 	const floorplanBlob = useAppStore((state) => state.floorplanBlob);
 	const floorplanDataUrl = useAppStore((state) => state.floorplanDataUrl);
 	const floorplanObjects = useAppStore((state) => state.floorplanObjects);
-	const floorplanBoundaries = useAppStore((state) => state.floorplanBoundaries);
+	const floorplanBoundaries = useAppStore(
+		(state) => state.floorplanBoundaries
+	);
 	const extractObjects = useExtractObjects();
 
 	// Load floorplan image
@@ -60,26 +62,106 @@ export default function FloorplanStep({
 		}
 	}, [floorplanDataUrl]);
 
+	// Load furniture icons
+	useEffect(() => {
+		const furnitureTypes = [
+			"door",
+			"window",
+			"wall",
+			"bed",
+			"chair",
+			"table",
+			"couch",
+			"toilet",
+			"sink",
+			"bathtub",
+			"shower",
+			"kitchen counter",
+			"refrigerator",
+			"oven",
+			"dishwasher",
+			"stairs",
+			"closet",
+			"cabinet",
+			"desk",
+			"dresser",
+		];
+
+		const loadIcons = async () => {
+			const icons: Record<string, HTMLImageElement> = {};
+
+			for (const type of furnitureTypes) {
+				try {
+					const img = new Image();
+					img.crossOrigin = "anonymous";
+					const imageUrl = `http://localhost:8000/static/floorplan_items/${encodeURIComponent(
+						type
+					)}/floorplan_icon.png`;
+					img.src = imageUrl;
+
+					const loaded = await new Promise<boolean>((resolve) => {
+						img.onload = () => {
+							console.log(`✅ Loaded icon for ${type}`);
+							resolve(true);
+						};
+						img.onerror = (error) => {
+							console.warn(
+								`❌ Failed to load icon for ${type} from ${imageUrl}`,
+								error
+							);
+							resolve(false);
+						};
+
+						// Timeout after 5 seconds
+						setTimeout(() => {
+							console.warn(`⏱️ Timeout loading icon for ${type}`);
+							resolve(false);
+						}, 5000);
+					});
+
+					// Only add successfully loaded images
+					if (loaded && img.complete && img.naturalWidth > 0) {
+						icons[type] = img;
+					}
+				} catch (error) {
+					console.error(`Error loading icon for ${type}:`, error);
+				}
+			}
+
+			console.log(
+				`Loaded ${Object.keys(icons).length}/${
+					furnitureTypes.length
+				} furniture icons`
+			);
+			setFurnitureIcons(icons);
+		};
+
+		loadIcons();
+	}, []);
+
 	// Extract objects on mount if we have a floorplan but no objects
 	useEffect(() => {
+		// Only run if we have a blob and no objects yet
+		if (!floorplanBlob || floorplanObjects.length > 0) {
+			return;
+		}
+
+		// Create a unique identifier for this blob
+		const blobId = `${floorplanBlob.size}-${floorplanBlob.type}`;
+
+		// Only extract if we haven't already initiated extraction for this blob
 		if (
-			floorplanBlob &&
-			floorplanObjects.length === 0 &&
+			extractionInitiatedRef.current !== blobId &&
 			!extractObjects.isPending
 		) {
-			// Create a unique identifier for this blob
-			const blobId = `${floorplanBlob.size}-${floorplanBlob.type}`;
-			
-			// Only extract if we haven't already initiated extraction for this blob
-			if (extractionInitiatedRef.current !== blobId) {
-				extractionInitiatedRef.current = blobId;
-				const file = new File([floorplanBlob], "floorplan.png", {
-					type: "image/png",
-				});
-				extractObjects.mutate(file);
-			}
+			console.log("Starting object extraction for blob:", blobId);
+			extractionInitiatedRef.current = blobId;
+			const file = new File([floorplanBlob], "floorplan.png", {
+				type: "image/png",
+			});
+			extractObjects.mutate(file);
 		}
-	}, [floorplanBlob, floorplanObjects.length, extractObjects.isPending]);
+	}, [floorplanBlob, floorplanObjects.length]);
 
 	const [showFurnitureModal, setShowFurnitureModal] = useState(false);
 	const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
@@ -100,6 +182,15 @@ export default function FloorplanStep({
 	const [isPanning, setIsPanning] = useState(false);
 	const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
 	const [furnitureItems, setFurnitureItems] = useState<FurnitureItem[]>([]);
+
+	// Debug menu state
+	const [showDebugMenu, setShowDebugMenu] = useState(false);
+	const [showRectangles, setShowRectangles] = useState(false);
+
+	// Store loaded furniture icons
+	const [furnitureIcons, setFurnitureIcons] = useState<
+		Record<string, HTMLImageElement>
+	>({});
 
 	const handleAddFurniture = (furnitureName: string) => {
 		if (selectedFurnitureId) {
@@ -233,8 +324,8 @@ export default function FloorplanStep({
 		ctx.save();
 		ctx.translate(offsetX, offsetY);
 
-		// Draw the floorplan image
-		ctx.drawImage(img, 0, 0, img.width, img.height);
+		// Draw the floorplan image (hidden - only showing detected objects)
+		// ctx.drawImage(img, 0, 0, img.width, img.height);
 
 		// Draw detected furniture from floorplan objects
 		floorplanObjects.forEach((obj) => {
@@ -252,42 +343,115 @@ export default function FloorplanStep({
 			const width = x2 - x1;
 			const height = y2 - y1;
 
-			// Draw furniture background
-			ctx.fillStyle = "rgba(74, 124, 255, 0.15)";
-			ctx.fillRect(x1, y1, width, height);
+			if (showRectangles) {
+				// Debug view: Draw rectangles
+				ctx.fillStyle = "rgba(74, 124, 255, 0.15)";
+				ctx.fillRect(x1, y1, width, height);
 
-			// Draw furniture outline
-			ctx.strokeStyle = isSelected
-				? "#E07B47"
-				: isDragging
-				? "#4A7CFF"
-				: "#4A7CFF";
-			ctx.lineWidth = isSelected || isDragging ? 2.5 : 2;
-			ctx.setLineDash([]);
-			ctx.strokeRect(x1, y1, width, height);
+				ctx.strokeStyle = isSelected
+					? "#E07B47"
+					: isDragging
+					? "#4A7CFF"
+					: "#4A7CFF";
+				ctx.lineWidth = isSelected || isDragging ? 2.5 : 2;
+				ctx.setLineDash([]);
+				ctx.strokeRect(x1, y1, width, height);
 
-			// Draw furniture label with name
-			ctx.fillStyle = "#1A1815";
-			ctx.font = "bold 11px sans-serif";
-			ctx.textAlign = "center";
-			ctx.textBaseline = "middle";
-			const label = obj.name || obj.type || "Unknown";
-			ctx.fillText(label.toUpperCase(), x1 + width / 2, y1 + height / 2);
+				// Draw furniture label
+				ctx.fillStyle = "#1A1815";
+				ctx.font = "bold 11px sans-serif";
+				ctx.textAlign = "center";
+				ctx.textBaseline = "middle";
+				const label = obj.name || obj.type || "Unknown";
+				ctx.fillText(
+					label.toUpperCase(),
+					x1 + width / 2,
+					y1 + height / 2
+				);
 
-			// Draw confidence indicator
-			const confidence = obj.confidence || "unknown";
-			const confidenceColor =
-				confidence === "high"
-					? "#10B981"
-					: confidence === "medium"
-					? "#F59E0B"
-					: "#EF4444";
-			ctx.fillStyle = confidenceColor;
-			ctx.beginPath();
-			ctx.arc(x1 + 6, y1 + 6, 4, 0, Math.PI * 2);
-			ctx.fill();
+				// Draw confidence indicator
+				const confidence = obj.confidence || "unknown";
+				const confidenceColor =
+					confidence === "high"
+						? "#10B981"
+						: confidence === "medium"
+						? "#F59E0B"
+						: "#EF4444";
+				ctx.fillStyle = confidenceColor;
+				ctx.beginPath();
+				ctx.arc(x1 + 6, y1 + 6, 4, 0, Math.PI * 2);
+				ctx.fill();
+			} else {
+				// Normal view: Draw furniture icon
+				const furnitureType = obj.type || obj.name;
+				const icon = furnitureIcons[furnitureType];
 
-			// Draw delete button when selected
+				// Check if icon exists, is complete, and loaded successfully (not broken)
+				if (
+					icon &&
+					icon.complete &&
+					icon.naturalWidth > 0 &&
+					icon.naturalHeight > 0
+				) {
+					try {
+						// Save context for rotation
+						ctx.save();
+
+						// Move to center of furniture
+						const centerX = x1 + width / 2;
+						const centerY = y1 + height / 2;
+						ctx.translate(centerX, centerY);
+
+						// Apply rotation (convert degrees to radians)
+						const rotation = obj.rotation || 0;
+						ctx.rotate((rotation * Math.PI) / 180);
+
+						// Draw icon centered and scaled to fit bbox
+						ctx.drawImage(
+							icon,
+							-width / 2,
+							-height / 2,
+							width,
+							height
+						);
+
+						ctx.restore();
+
+						// Draw selection highlight if selected
+						if (isSelected) {
+							ctx.strokeStyle = "#E07B47";
+							ctx.lineWidth = 3;
+							ctx.setLineDash([]);
+							ctx.strokeRect(x1, y1, width, height);
+						}
+					} catch (error) {
+						console.error(
+							`Failed to draw icon for ${furnitureType}:`,
+							error
+						);
+						// Fallback on error
+						ctx.fillStyle = "rgba(74, 124, 255, 0.5)";
+						ctx.fillRect(x1, y1, width, height);
+					}
+				} else {
+					// Fallback: draw colored rectangle if icon not loaded or broken
+					ctx.fillStyle = "rgba(74, 124, 255, 0.5)";
+					ctx.fillRect(x1, y1, width, height);
+
+					// Draw label for debugging
+					ctx.fillStyle = "#1A1815";
+					ctx.font = "bold 10px sans-serif";
+					ctx.textAlign = "center";
+					ctx.textBaseline = "middle";
+					ctx.fillText(
+						furnitureType,
+						x1 + width / 2,
+						y1 + height / 2
+					);
+				}
+			}
+
+			// Draw delete button when selected (always visible)
 			if (isSelected) {
 				const deleteX = x2;
 				const deleteY = y1;
@@ -374,10 +538,11 @@ export default function FloorplanStep({
 
 		// Draw boundary elements (walls, doors, windows) - non-draggable
 		// Render in order: walls first, then doors, then windows (for proper z-ordering)
-		
+
 		// First pass: Draw walls
 		floorplanBoundaries.forEach((boundary) => {
-			if (!boundary.bbox_normalized || !img || boundary.class !== "wall") return;
+			if (!boundary.bbox_normalized || !img || boundary.class !== "wall")
+				return;
 
 			// Convert normalized bbox to canvas coordinates
 			const x1 = boundary.bbox_normalized.x1 * img.width;
@@ -400,7 +565,8 @@ export default function FloorplanStep({
 
 		// Second pass: Draw doors
 		floorplanBoundaries.forEach((boundary) => {
-			if (!boundary.bbox_normalized || !img || boundary.class !== "door") return;
+			if (!boundary.bbox_normalized || !img || boundary.class !== "door")
+				return;
 
 			// Convert normalized bbox to canvas coordinates
 			const x1 = boundary.bbox_normalized.x1 * img.width;
@@ -423,7 +589,12 @@ export default function FloorplanStep({
 
 		// Third pass: Draw windows (on top of everything)
 		floorplanBoundaries.forEach((boundary) => {
-			if (!boundary.bbox_normalized || !img || boundary.class !== "window") return;
+			if (
+				!boundary.bbox_normalized ||
+				!img ||
+				boundary.class !== "window"
+			)
+				return;
 
 			// Convert normalized bbox to canvas coordinates
 			const x1 = boundary.bbox_normalized.x1 * img.width;
@@ -458,6 +629,8 @@ export default function FloorplanStep({
 		draggingId,
 		floorplanObjects,
 		floorplanBoundaries,
+		showRectangles,
+		furnitureIcons,
 	]);
 
 	// Initialize canvas size
@@ -883,12 +1056,57 @@ export default function FloorplanStep({
 
 						{/* Floorplan Content */}
 						<div className='flex-1 flex items-center justify-center bg-[#F5F3EF]'>
-							{extractObjects.isPending ? (
+							{extractObjects.isPending &&
+							floorplanObjects.length === 0 ? (
 								<div className='text-center space-y-4'>
 									<div className='w-16 h-16 border-4 border-[#E5E2DA] border-t-[#E07B47] rounded-full animate-spin mx-auto'></div>
 									<p className='text-[#6B6862] text-sm'>
 										Detecting and classifying furniture...
 									</p>
+									<p className='text-[#6B6862] text-xs'>
+										Check browser console (F12) if this
+										takes more than 2 minutes
+									</p>
+									<button
+										onClick={() => {
+											console.log("Manual status check:");
+											console.log(
+												"isPending:",
+												extractObjects.isPending
+											);
+											console.log(
+												"isError:",
+												extractObjects.isError
+											);
+											console.log(
+												"isSuccess:",
+												extractObjects.isSuccess
+											);
+											console.log(
+												"Objects:",
+												floorplanObjects.length
+											);
+										}}
+										className='mt-4 px-4 py-2 bg-[#6B6862] text-white rounded-lg text-xs hover:bg-[#1A1815]'
+									>
+										Debug: Check Status
+									</button>
+								</div>
+							) : extractObjects.isError ? (
+								<div className='text-center space-y-4'>
+									<p className='text-red-600 font-medium'>
+										Error extracting objects
+									</p>
+									<p className='text-[#6B6862] text-sm'>
+										{extractObjects.error?.message ||
+											"Unknown error"}
+									</p>
+									<button
+										onClick={() => extractObjects.reset()}
+										className='px-4 py-2 bg-[#E07B47] text-white rounded-lg hover:bg-[#D06A36]'
+									>
+										Try Again
+									</button>
 								</div>
 							) : (
 								<div
@@ -911,7 +1129,8 @@ export default function FloorplanStep({
 												: "grab",
 										}}
 									/>
-									{(floorplanObjects.length > 0 || floorplanBoundaries.length > 0) && (
+									{(floorplanObjects.length > 0 ||
+										floorplanBoundaries.length > 0) && (
 										<div className='absolute top-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg px-4 py-2 shadow-lg'>
 											<p className='text-sm text-[#1A1815] font-medium'>
 												{floorplanObjects.length}{" "}
@@ -919,12 +1138,16 @@ export default function FloorplanStep({
 												{floorplanObjects.length !== 1
 													? "s"
 													: ""}
-												{floorplanBoundaries.length > 0 && (
+												{floorplanBoundaries.length >
+													0 && (
 													<>
 														<br />
-														{floorplanBoundaries.length}{" "}
+														{
+															floorplanBoundaries.length
+														}{" "}
 														boundary element
-														{floorplanBoundaries.length !== 1
+														{floorplanBoundaries.length !==
+														1
 															? "s"
 															: ""}
 													</>
@@ -936,6 +1159,38 @@ export default function FloorplanStep({
 							)}
 						</div>
 					</div>
+				</div>
+
+				{/* Debug Menu - Top Right */}
+				<div className='absolute top-24 right-8 z-10'>
+					<button
+						onClick={() => setShowDebugMenu(!showDebugMenu)}
+						className='px-4 py-2 bg-white/90 backdrop-blur-sm text-[#6B6862] rounded-lg shadow-lg hover:bg-white transition-colors text-sm font-medium'
+					>
+						🐛 Debug
+					</button>
+
+					{showDebugMenu && (
+						<div className='mt-2 bg-white/90 backdrop-blur-sm rounded-lg shadow-lg p-4 space-y-2'>
+							<label className='flex items-center gap-2 cursor-pointer'>
+								<input
+									type='checkbox'
+									checked={showRectangles}
+									onChange={(e) =>
+										setShowRectangles(e.target.checked)
+									}
+									className='w-4 h-4 rounded border-gray-300 text-[#E07B47] focus:ring-[#E07B47]'
+								/>
+								<span className='text-sm text-[#1A1815]'>
+									Show Rectangles
+								</span>
+							</label>
+							<p className='text-xs text-[#6B6862] mt-2'>
+								Toggle to switch between icon view and debug
+								rectangle view
+							</p>
+						</div>
+					)}
 				</div>
 
 				{/* Add Furniture Button - Bottom Right */}

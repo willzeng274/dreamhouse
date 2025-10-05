@@ -12,7 +12,7 @@ organized by service and functionality for easy maintenance and updates.
 
 # Method: generate_floorplan (line 8-11)
 # Purpose: Convert a hand-drawn sketch into a top-down architectural floorplan
-FLOORPLAN_GENERATION_PROMPT = """convert this very rough sketch into a fully realized, top-down floorplan, with proper graphics, lots of distinct furniture, architecture, rooms, etc. make sure that the final output is a proper, real floorplan. Never overlap pieces of furniture, ex. absolutely NO RUGS OR CARPET. NO TEXT OR LABELS. everything should be low res black and white. Use only straight lines"""
+FLOORPLAN_GENERATION_PROMPT = """convert this very rough sketch into a fully realized, top-down floorplan, with proper graphics, lots of distinct furniture, architecture, rooms, etc. make sure that the final output is a proper, real floorplan. Never overlap pieces of furniture, ex. absolutely NO RUGS OR CARPET. NO TEXT OR LABELS. everything should be low res black and white. Use only straight lines. Beds should be a uniform light color, not easily mistaken as 2 parts"""
 
 # Method: revise_floorplan (line 13-16)
 # Purpose: Revise an existing floorplan based on user instructions
@@ -40,7 +40,7 @@ PHOTOREALISTIC_GENERATION_PROMPT = (
 
 # Method: generate_realistic_floorplan_for_classification
 # Purpose: Generate a realistic top-down rendered version while maintaining exact dimensions/positions
-REALISTIC_FLOORPLAN_FOR_CLASSIFICATION_PROMPT = """make realistic top down fully rendered version of this floor plan, keep the dimensions/positions of all furniture and walls 1 to 1, pixel to pixel"""
+REALISTIC_FLOORPLAN_FOR_CLASSIFICATION_PROMPT = """make realistic top down fully rendered version of this floor plan, keep the dimensions/positions/sizes of all furniture and walls 1 to 1, pixel to pixel"""
 
 
 # ============================================================================

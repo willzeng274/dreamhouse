@@ -1003,16 +1003,34 @@ The variations are numbered from 0 to {len(variation_images) - 1}."""
             highlighted_images,  # Pass realistic images with individual object highlights
         )
 
-        # Match each object to its best model variation
+        # Match each object to its best model variation IN PARALLEL
         print(
-            f"\nMatching {len(object_images_and_info)} objects to model variations..."
+            f"\nMatching {len(object_images_and_info)} objects to model variations in parallel..."
         )
 
-        # Combine segmentation info with classifications
-        classified_objects = []
-
+        # Create matching tasks for all objects
+        matching_tasks = []
         for i, ((obj_image, obj), classification) in enumerate(
             zip(object_images_and_info, classifications)
+        ):
+            furniture_type = classification.get("furniture_type", "other")
+            print(f"  Creating task for object #{i+1} ({furniture_type})...")
+
+            task = self._match_object_to_model_variation(
+                obj_image,  # The cropped realistic object image
+                furniture_type,
+            )
+            matching_tasks.append(task)
+
+        # Run all model matching tasks in parallel
+        print(f"  Running {len(matching_tasks)} model matching tasks in parallel...")
+        model_indices = await asyncio.gather(*matching_tasks)
+
+        # Combine segmentation info with classifications and model matches
+        classified_objects = []
+
+        for i, ((obj_image, obj), classification, model_index) in enumerate(
+            zip(object_images_and_info, classifications, model_indices)
         ):
             # Get furniture type from classification
             furniture_type = classification.get("furniture_type", "other")
@@ -1021,13 +1039,6 @@ The variations are numbered from 0 to {len(variation_images) - 1}."""
             width = obj["dimensions_normalized"]["width"]
             height = obj["dimensions_normalized"]["height"]
             obj_aspect_ratio = width / height if height > 0 else 1.0
-
-            # Match object to best model variation
-            print(f"  Matching object #{i+1} ({furniture_type})...")
-            model_index = await self._match_object_to_model_variation(
-                obj_image,  # The cropped realistic object image
-                furniture_type,
-            )
 
             # Calculate center position from bbox
             center_x = (obj["bbox_normalized"]["x1"] + obj["bbox_normalized"]["x2"]) / 2
