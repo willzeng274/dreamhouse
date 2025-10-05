@@ -70,18 +70,28 @@ async def extract_objects(floorplan: UploadFile = File(...)):
     response_data = {
         "objects": objects_data, 
         "boundaries": boundaries_data,
-        "outdated": False
     }
+
+    return response_data
+
+@router.post("/update-floor-plan")
+async def update_floor_plan(data: dict):
+    """
+    Receives objects and boundaries data from frontend, adds outdated flag,
+    and saves to data.json
+    """
+    # Add outdated flag to the data
+    data["outdated"] = False
     
-    # Save response to data.json with outdated flag
+    # Save to data.json
     with open("./data.json", "w") as f:
-        json.dump(response_data, f, indent=2)
-    print(f"💾 Saved extraction data to ./data.json with outdated=False")
+        json.dump(data, f, indent=2)
+    print(f"💾 Saved updated floor plan data to ./data.json with outdated=False")
     
     # Convert and save to arihan.json using helper function
     convert_to_old_format_and_save()
-
-    return response_data
+    
+    return {"status": "success", "message": "Floor plan data updated successfully"}
 
 @router.get("/unity-extract")
 async def unity_extract():

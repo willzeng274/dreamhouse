@@ -85,9 +85,11 @@ export default function SketchStep({
 	const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
 	const [showCursor, setShowCursor] = useState(false);
 
-	// History for undo/redo
-	const [history, setHistory] = useState<HistoryState[]>([]);
-	const [historyIndex, setHistoryIndex] = useState(-1);
+	// History for undo/redo - initialize with empty state
+	const [history, setHistory] = useState<HistoryState[]>([
+		{ lines: [], shapes: [], straightLines: [], texts: [] },
+	]);
+	const [historyIndex, setHistoryIndex] = useState(0);
 
 	// Stage position and scale
 	const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
@@ -601,13 +603,13 @@ export default function SketchStep({
 		setShapes([]);
 		setStraightLines([]);
 		setTexts([]);
-		setCurrentShape(null);
-		setCurrentLine(null);
+		currentShape.current = null;
+		currentLine.current = null;
 		setStagePos({ x: 0, y: 0 });
 		setStageScale(1);
 		setSketchData("");
-		setHistory([]);
-		setHistoryIndex(-1);
+		setHistory([{ lines: [], shapes: [], straightLines: [], texts: [] }]);
+		setHistoryIndex(0);
 	};
 
 	const handleWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {

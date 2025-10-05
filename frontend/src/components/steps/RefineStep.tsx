@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useAppStore } from "@/store/useAppStore";
+import { Highlighter } from "lucide-react";
 import {
 	useGenerateFloorplan,
 	useReviseFloorplan,
@@ -13,26 +14,9 @@ interface RefineStepProps {
 	currentStep: number;
 }
 
-interface SelectionBox {
-	startX: number;
-	startY: number;
-	endX: number;
-	endY: number;
-}
-
-interface Annotation {
+interface HighlighterStroke {
 	id: string;
-	// Screen coordinates for display (absolute positioning)
-	screenX: number;
-	screenY: number;
-	// Image coordinates for backend (normalized or pixel coords)
-	bbox: {
-		x: number;
-		y: number;
-		width: number;
-		height: number;
-	};
-	text: string;
+	points: number[]; // [x1, y1, x2, y2, ...]
 }
 
 interface Transform {
@@ -46,18 +30,10 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 	const floorplanDataUrl = useAppStore((state) => state.floorplanDataUrl);
 	const floorplanBlob = useAppStore((state) => state.floorplanBlob);
 
-	const [showSelectArea, setShowSelectArea] = useState(false);
-	const [isSelecting, setIsSelecting] = useState(false);
-	const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
-	const [annotations, setAnnotations] = useState<Annotation[]>([]);
-	const [showAnnotationInput, setShowAnnotationInput] = useState(false);
-	const [annotationText, setAnnotationText] = useState("");
-	const [tempAnnotationPos, setTempAnnotationPos] = useState<{
-		x: number;
-		y: number;
-		bbox: { x: number; y: number; width: number; height: number };
-	} | null>(null);
-	const [downloadNotification, setDownloadNotification] = useState(false);
+	const [isHighlighting, setIsHighlighting] = useState(false);
+	const [highlighterStrokes, setHighlighterStrokes] = useState<HighlighterStroke[]>([]);
+	const [currentStroke, setCurrentStroke] = useState<number[]>([]);
+	const [instructionText, setInstructionText] = useState("");
 	const containerRef = useRef<HTMLDivElement>(null);
 	const imgRef = useRef<HTMLImageElement>(null);
 
@@ -88,49 +64,11 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 		}
 	}, [sketchDataUrl]);
 
-	// Coordinate transformation helpers
-	const screenToImageCoords = (
-		screenX: number,
-		screenY: number
-	): { x: number; y: number } => {
-		if (!imgRef.current || !containerRef.current) {
-			return { x: 0, y: 0 };
-		}
-
-		const rect = containerRef.current.getBoundingClientRect();
-		const relativeX = screenX - rect.left;
-		const relativeY = screenY - rect.top;
-
-		// Account for transform (pan and zoom)
-		const imageX = (relativeX - transform.offsetX) / transform.scale;
-		const imageY = (relativeY - transform.offsetY) / transform.scale;
-
-		return { x: imageX, y: imageY };
-	};
-
-	const imageToScreenCoords = (
-		imageX: number,
-		imageY: number
-	): { x: number; y: number } => {
-		if (!containerRef.current) {
-			return { x: 0, y: 0 };
-		}
-
-		const rect = containerRef.current.getBoundingClientRect();
-
-		// Apply transform (zoom and pan)
-		const screenX = imageX * transform.scale + transform.offsetX + rect.left;
-		const screenY = imageY * transform.scale + transform.offsetY + rect.top;
-
-		return { x: screenX, y: screenY };
-	};
-
 	const createAnnotatedImage = async (): Promise<Blob | null> => {
-		if (!floorplanDataUrl || annotations.length === 0) return null;
+		if (!floorplanDataUrl || highlighterStrokes.length === 0) return null;
 
 		console.log("=== Creating Annotated Image ===");
-		console.log("Number of annotations:", annotations.length);
-		console.log("Annotations:", annotations);
+		console.log("Number of highlighter strokes:", highlighterStrokes.length);
 
 		// Create a canvas to draw the annotated image
 		const canvas = document.createElement("canvas");
@@ -155,30 +93,29 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 		// Draw the original image
 		ctx.drawImage(img, 0, 0);
 
-		// Draw bounding boxes
-		ctx.strokeStyle = "#E07B47";
-		ctx.lineWidth = 5;
-		ctx.fillStyle = "rgba(224, 123, 71, 0.3)";
+		// Draw green highlighter strokes
+		ctx.strokeStyle = "rgba(34, 197, 94, 0.6)"; // Green with transparency
+		ctx.lineWidth = 20;
+		ctx.lineCap = "round";
+		ctx.lineJoin = "round";
 
-		console.log("Drawing bounding boxes:");
-		annotations.forEach((annotation, index) => {
-			const { bbox } = annotation;
-			console.log(`  Box ${index}:`, bbox, "Text:", annotation.text);
+		console.log("Drawing highlighter strokes:");
+		highlighterStrokes.forEach((stroke, index) => {
+			console.log(`  Stroke ${index}: ${stroke.points.length / 2} points`);
 
-			// Draw filled rectangle
-			ctx.fillRect(bbox.x, bbox.y, bbox.width, bbox.height);
-			// Draw border
-			ctx.strokeRect(bbox.x, bbox.y, bbox.width, bbox.height);
+			if (stroke.points.length < 4) return; // Need at least 2 points
 
-			// Draw text label
-			ctx.fillStyle = "#E07B47";
-			ctx.font = "bold 24px sans-serif";
-			const textY = bbox.y > 30 ? bbox.y - 10 : bbox.y + bbox.height + 25;
-			ctx.fillText(annotation.text, bbox.x + 5, textY);
-			ctx.fillStyle = "rgba(224, 123, 71, 0.3)";
+			ctx.beginPath();
+			ctx.moveTo(stroke.points[0], stroke.points[1]);
+
+			for (let i = 2; i < stroke.points.length; i += 2) {
+				ctx.lineTo(stroke.points[i], stroke.points[i + 1]);
+			}
+
+			ctx.stroke();
 		});
 
-		console.log("Finished drawing boxes on canvas");
+		console.log("Finished drawing highlighter strokes on canvas");
 
 		// Convert canvas to blob
 		return new Promise((resolve) => {
@@ -192,16 +129,11 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 	const handleRegenerate = async () => {
 		if (!floorplanBlob) return;
 
-		// Collect all annotations into a single instruction
-		const instruction =
-			annotations.length > 0
-				? annotations.map((a) => a.text).join("; ")
-				: "improve the floorplan";
-
+		const instruction = instructionText.trim() || "improve the floorplan";
 		let fileToSend: File;
 
-		// If we have annotations, create annotated image with bounding boxes
-		if (annotations.length > 0) {
+		// If we have highlighter strokes, create annotated image
+		if (highlighterStrokes.length > 0) {
 			const annotatedBlob = await createAnnotatedImage();
 			if (annotatedBlob) {
 				fileToSend = new File([annotatedBlob], "floorplan_annotated.png", {
@@ -212,22 +144,7 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 				console.log("=== REFINE STAGE: Sending to Backend ===");
 				console.log("Image file:", fileToSend.name, fileToSend.size, "bytes");
 
-				// AUTO-DOWNLOAD the annotated image for debugging
-				const dataUrl = URL.createObjectURL(annotatedBlob);
-				const downloadLink = document.createElement('a');
-				downloadLink.href = dataUrl;
-				downloadLink.download = `annotated_floorplan_${Date.now()}.png`;
-				document.body.appendChild(downloadLink);
-				downloadLink.click();
-				document.body.removeChild(downloadLink);
-				URL.revokeObjectURL(dataUrl);
 
-				console.log("✅ Downloaded annotated image to your Downloads folder");
-				console.log("Check the downloaded image to verify bounding boxes are visible");
-
-				// Show notification
-				setDownloadNotification(true);
-				setTimeout(() => setDownloadNotification(false), 5000);
 
 				// Also log base64 for completeness
 				const reader = new FileReader();
@@ -244,18 +161,7 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 					});
 				}
 
-				console.log("Bounding boxes:");
-				console.table(
-					annotations.map((a) => ({
-						id: a.id,
-						text: a.text,
-						x: Math.round(a.bbox.x),
-						y: Math.round(a.bbox.y),
-						width: Math.round(a.bbox.width),
-						height: Math.round(a.bbox.height),
-					}))
-				);
-
+				console.log("Highlighter strokes:", highlighterStrokes.length);
 				console.log("Instruction text:", instruction);
 				console.log("=========================================");
 			} else {
@@ -272,14 +178,14 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 		}
 
 		reviseFloorplan.mutate({ floorplanFile: fileToSend, instruction });
-		setAnnotations([]); // Clear annotations after regenerating
+		setHighlighterStrokes([]); // Clear highlighter strokes after regenerating
 	};
 
-	const isGenerating =
-		generateFloorplan.isPending || reviseFloorplan.isPending;
+    const isGenerating = generateFloorplan.isPending;
+    const isRefining = reviseFloorplan.isPending;
 
 	const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-		if (!showSelectArea) {
+		if (!isHighlighting) {
 			// Start panning
 			setIsPanning(true);
 			setLastMousePos({ x: e.clientX, y: e.clientY });
@@ -289,17 +195,12 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 		const rect = containerRef.current?.getBoundingClientRect();
 		if (!rect) return;
 
-		const x = e.clientX - rect.left;
-		const y = e.clientY - rect.top;
+		// Convert to image coordinates
+		const x = (e.clientX - rect.left - transform.offsetX) / transform.scale;
+		const y = (e.clientY - rect.top - transform.offsetY) / transform.scale;
 
-		// Start selection
-		setIsSelecting(true);
-		setSelectionBox({
-			startX: x,
-			startY: y,
-			endX: x,
-			endY: y,
-		});
+		// Start new stroke
+		setCurrentStroke([x, y]);
 	};
 
 	const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -317,89 +218,34 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 			return;
 		}
 
-		if (!isSelecting || !selectionBox || !containerRef.current) return;
+		if (!isHighlighting || currentStroke.length === 0 || !containerRef.current) return;
 
 		const rect = containerRef.current.getBoundingClientRect();
-		const x = e.clientX - rect.left;
-		const y = e.clientY - rect.top;
 
-		setSelectionBox({
-			...selectionBox,
-			endX: x,
-			endY: y,
-		});
+		// Convert to image coordinates
+		const x = (e.clientX - rect.left - transform.offsetX) / transform.scale;
+		const y = (e.clientY - rect.top - transform.offsetY) / transform.scale;
+
+		setCurrentStroke((prev) => [...prev, x, y]);
 	};
 
-	const handleMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
-		if (isSelecting && selectionBox) {
-			setIsSelecting(false);
-
-			const width = Math.abs(selectionBox.endX - selectionBox.startX);
-			const height = Math.abs(selectionBox.endY - selectionBox.startY);
-
-			// Only show input if there's an actual selection (not just a click)
-			if (width > 5 && height > 5) {
-				// Store the selection box for later conversion to annotation
-				const rect = containerRef.current?.getBoundingClientRect();
-				if (rect) {
-					// Convert selection box to image coordinates
-					// selectionBox coords are container-relative, convert to screen coords
-					const minX = Math.min(selectionBox.startX, selectionBox.endX);
-					const minY = Math.min(selectionBox.startY, selectionBox.endY);
-
-					// Convert container-relative coords to screen coords for screenToImageCoords
-					const screenMinX = minX + rect.left;
-					const screenMinY = minY + rect.top;
-					const screenMaxX = screenMinX + width;
-					const screenMaxY = screenMinY + height;
-
-					const topLeftImage = screenToImageCoords(screenMinX, screenMinY);
-					const bottomRightImage = screenToImageCoords(screenMaxX, screenMaxY);
-
-					console.log("Selection:", {
-						container: { minX, minY, width, height },
-						screen: { screenMinX, screenMinY, screenMaxX, screenMaxY },
-						image: { topLeftImage, bottomRightImage },
-					});
-
-					setTempAnnotationPos({
-						x: e.clientX,
-						y: e.clientY,
-						bbox: {
-							x: topLeftImage.x,
-							y: topLeftImage.y,
-							width: bottomRightImage.x - topLeftImage.x,
-							height: bottomRightImage.y - topLeftImage.y,
-						},
-					});
-					setShowAnnotationInput(true);
-				}
-			}
-
-			setSelectionBox(null);
+	const handleMouseUp = () => {
+		if (currentStroke.length >= 4) {
+			// Save the stroke
+			setHighlighterStrokes((prev) => [
+				...prev,
+				{
+					id: Date.now().toString(),
+					points: currentStroke,
+				},
+			]);
 		}
-
+		setCurrentStroke([]);
 		setIsPanning(false);
 	};
 
-	const handleAddAnnotation = () => {
-		if (annotationText.trim() && tempAnnotationPos) {
-			const newAnnotation: Annotation = {
-				id: Date.now().toString(),
-				screenX: tempAnnotationPos.x,
-				screenY: tempAnnotationPos.y,
-				bbox: tempAnnotationPos.bbox,
-				text: annotationText,
-			};
-			setAnnotations([...annotations, newAnnotation]);
-			setAnnotationText("");
-			setShowAnnotationInput(false);
-			setTempAnnotationPos(null);
-		}
-	};
-
-	const handleDeleteAnnotation = (id: string) => {
-		setAnnotations(annotations.filter((a) => a.id !== id));
+	const handleClearHighlighter = () => {
+		setHighlighterStrokes([]);
 	};
 
 	// Wheel handler for zoom (using native event to prevent passive warning)
@@ -456,22 +302,6 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 		});
 	};
 
-	const getSelectionStyle = () => {
-		if (!selectionBox) return {};
-
-		const x = Math.min(selectionBox.startX, selectionBox.endX);
-		const y = Math.min(selectionBox.startY, selectionBox.endY);
-		const width = Math.abs(selectionBox.endX - selectionBox.startX);
-		const height = Math.abs(selectionBox.endY - selectionBox.startY);
-
-		return {
-			left: `${x}px`,
-			top: `${y}px`,
-			width: `${width}px`,
-			height: `${height}px`,
-		};
-	};
-
 	return (
 		<div className='h-full flex overflow-hidden'>
 			<div className='flex-1 p-4 flex flex-col min-w-0'>
@@ -511,27 +341,32 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 						</div>
 						{!isGenerating && floorplanDataUrl && (
 							<div className='flex items-center gap-2'>
-								<button
-									onClick={() =>
-										setShowSelectArea(!showSelectArea)
-									}
-									className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${showSelectArea
-										? "bg-[#1A1815] text-white"
-										: "bg-[#F5F3EF] text-[#6B6862] hover:bg-[#E5E2DA]"
-										}`}
-								>
-									{showSelectArea
-										? "Cancel Annotation"
-										: "Add Annotation"}
-								</button>
+                                <button
+                                    onClick={() => setIsHighlighting(!isHighlighting)}
+                                    title='Highlighter'
+                                    aria-label='Highlighter'
+                                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center ${
+                                        isHighlighting
+                                            ? "bg-green-600 text-white"
+                                            : "bg-[#F5F3EF] text-[#6B6862] hover:bg-[#E5E2DA]"
+                                    }`}
+                                >
+                                    <Highlighter size={16} />
+                                </button>
+								{highlighterStrokes.length > 0 && (
+									<button
+										onClick={handleClearHighlighter}
+										className='px-4 py-2 rounded-lg text-sm font-medium bg-[#F5F3EF] text-[#6B6862] hover:bg-[#E5E2DA] transition-colors'
+									>
+										Clear
+									</button>
+								)}
 								<button
 									onClick={handleRegenerate}
 									disabled={reviseFloorplan.isPending}
 									className='px-4 py-2 rounded-lg text-sm font-medium bg-[#F5F3EF] text-[#6B6862] hover:bg-[#E5E2DA] transition-colors disabled:opacity-50'
 								>
-									{reviseFloorplan.isPending
-										? "Applying..."
-										: "Apply Changes"}
+									{reviseFloorplan.isPending ? "Applying..." : "Apply Changes"}
 								</button>
 								<button
 									onClick={onPrevious}
@@ -550,7 +385,7 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 					</div>
 
 					<div className='flex-1 flex items-center justify-center bg-[#F5F3EF] overflow-hidden'>
-						{isGenerating ? (
+                        {isGenerating ? (
 							<div className='text-center space-y-4'>
 								<div className='w-16 h-16 border-4 border-[#E5E2DA] border-t-[#E07B47] rounded-full animate-spin mx-auto'></div>
 								<p className='text-[#6B6862] text-sm'>
@@ -566,11 +401,11 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 								onMouseUp={handleMouseUp}
 								onMouseLeave={handleMouseUp}
 								style={{
-									cursor: showSelectArea
+									cursor: isHighlighting
 										? "crosshair"
 										: isPanning
-											? "grabbing"
-											: "grab",
+										? "grabbing"
+										: "grab",
 								}}
 							>
 								<img
@@ -586,117 +421,84 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 									}}
 								/>
 
-								{showSelectArea && (
-									<div className='absolute inset-0 pointer-events-none'>
-										{!isSelecting && !selectionBox && (
-											<div className='absolute inset-0 flex items-center justify-center bg-[#1A1815]/20 backdrop-blur-[1px]'>
-												<div className='text-white text-sm bg-[#1A1815] px-4 py-2 rounded-lg'>
-													Click and drag to select an
-													area to annotate
-												</div>
-											</div>
-										)}
+								{/* Green highlighter strokes overlay */}
+								<svg
+									className='absolute inset-0 pointer-events-none'
+									style={{
+										width: '100%',
+										height: '100%',
+									}}
+								>
+									{/* Render saved strokes */}
+									{highlighterStrokes.map((stroke) => {
+										if (stroke.points.length < 4) return null;
 
-										{selectionBox && (
-											<>
-												<div className='absolute inset-0 bg-[#1A1815]/20 backdrop-blur-[1px]' />
-												<div
-													className='absolute border-2 border-[#E07B47] bg-[#E07B47]/20'
-													style={getSelectionStyle()}
-												/>
-											</>
-										)}
-									</div>
-								)}
+										// Convert image coords to screen coords
+										const screenPoints = [];
+										for (let i = 0; i < stroke.points.length; i += 2) {
+											const screenX = stroke.points[i] * transform.scale + transform.offsetX;
+											const screenY = stroke.points[i + 1] * transform.scale + transform.offsetY;
+											screenPoints.push(`${screenX},${screenY}`);
+										}
 
-								{/* Persistent bounding boxes with text labels */}
-								{annotations.map((annotation) => {
-									const topLeft = imageToScreenCoords(
-										annotation.bbox.x,
-										annotation.bbox.y
-									);
-									const bottomRight = imageToScreenCoords(
-										annotation.bbox.x + annotation.bbox.width,
-										annotation.bbox.y + annotation.bbox.height
-									);
-
-									const screenWidth = bottomRight.x - topLeft.x;
-									const screenHeight = bottomRight.y - topLeft.y;
-
-									return (
-										<div key={`bbox-${annotation.id}`}>
-											{/* Bounding box rectangle */}
-											<div
-												className='absolute pointer-events-none border-2 border-[#E07B47] bg-[#E07B47]/10'
-												style={{
-													left: topLeft.x - containerRef.current!.getBoundingClientRect().left,
-													top: topLeft.y - containerRef.current!.getBoundingClientRect().top,
-													width: screenWidth,
-													height: screenHeight,
-												}}
+										return (
+											<polyline
+												key={stroke.id}
+												points={screenPoints.join(' ')}
+												stroke="rgba(34, 197, 94, 0.6)"
+												strokeWidth={20 * transform.scale}
+												strokeLinecap="round"
+												strokeLinejoin="round"
+												fill="none"
 											/>
-											{/* Annotation text bubble */}
-											<div
-												className='absolute pointer-events-auto z-10'
-												style={{
-													left: annotation.screenX,
-													top: annotation.screenY,
-												}}
-											>
-												<div className='relative bg-[#E07B47] text-white px-3 py-2 rounded-lg text-sm shadow-lg min-w-[120px]'>
-													<button
-														onClick={() =>
-															handleDeleteAnnotation(
-																annotation.id
-															)
-														}
-														className='absolute -top-2 -right-2 w-5 h-5 bg-[#EF4444] rounded-full text-white text-xs hover:bg-[#DC2626] transition-colors'
-													>
-														×
-													</button>
-													{annotation.text}
-												</div>
-											</div>
-										</div>
-									);
-								})}
+										);
+									})}
 
-								{showAnnotationInput && tempAnnotationPos && (
-									<div
-										className='absolute bg-white border-2 border-[#E07B47] rounded-lg p-3 shadow-xl z-50'
-										style={{
-											left: tempAnnotationPos.x,
-											top: tempAnnotationPos.y,
-										}}
-									>
-										<textarea
-											value={annotationText}
-											onChange={(e) =>
-												setAnnotationText(e.target.value)
-											}
-											placeholder='Enter annotation...'
-											className='w-64 h-20 border border-[#E5E2DA] rounded px-2 py-1 text-sm resize-none focus:outline-none focus:border-[#E07B47]'
-											autoFocus
-										/>
-										<div className='flex gap-2 mt-2'>
-											<button
-												onClick={handleAddAnnotation}
-												className='px-3 py-1 bg-[#E07B47] text-white text-sm rounded hover:bg-[#D06A36] transition-colors'
-											>
-												Add
-											</button>
-											<button
-												onClick={() => {
-													setShowAnnotationInput(
-														false
-													);
-													setAnnotationText("");
-													setTempAnnotationPos(null);
-												}}
-												className='px-3 py-1 bg-[#F5F3EF] text-[#6B6862] text-sm rounded hover:bg-[#E5E2DA] transition-colors'
-											>
-												Cancel
-											</button>
+									{/* Render current stroke being drawn */}
+									{currentStroke.length >= 4 && (() => {
+										const screenPoints = [];
+										for (let i = 0; i < currentStroke.length; i += 2) {
+											const screenX = currentStroke[i] * transform.scale + transform.offsetX;
+											const screenY = currentStroke[i + 1] * transform.scale + transform.offsetY;
+											screenPoints.push(`${screenX},${screenY}`);
+										}
+
+										return (
+											<polyline
+												points={screenPoints.join(' ')}
+												stroke="rgba(34, 197, 94, 0.6)"
+												strokeWidth={20 * transform.scale}
+												strokeLinecap="round"
+												strokeLinejoin="round"
+												fill="none"
+											/>
+										);
+									})()}
+								</svg>
+
+                                {isRefining && (
+                                    <div className='absolute inset-0 bg-white/70 backdrop-blur-sm flex items-center justify-center z-20'>
+                                        <div className='text-center space-y-3'>
+                                            <div className='w-12 h-12 border-4 border-[#E5E2DA] border-t-[#E07B47] rounded-full animate-spin mx-auto'></div>
+                                            <p className='text-[#6B6862] text-sm'>Applying refinement...</p>
+                                        </div>
+                                    </div>
+                                )}
+
+								{/* Instruction text input - positioned at bottom */}
+								{!isGenerating && (
+									<div className='absolute bottom-4 left-1/2 -translate-x-1/2 z-10'>
+										<div className='bg-white rounded-xl shadow-2xl p-4 border border-[#E5E2DA] min-w-[500px]'>
+											<label className='block text-sm font-medium text-[#1A1815] mb-2'>
+												Instructions (optional)
+											</label>
+											<textarea
+												value={instructionText}
+												onChange={(e) => setInstructionText(e.target.value)}
+												placeholder='Describe what changes you want to make...'
+												className='w-full bg-[#F5F3EF] border-0 rounded-lg px-3 py-2 text-sm text-[#1A1815] placeholder-[#6B6862] resize-none focus:outline-none focus:ring-0'
+												rows={2}
+											/>
 										</div>
 									</div>
 								)}
@@ -719,16 +521,6 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 				</div>
 			</div>
 
-			{/* Download Notification */}
-			{downloadNotification && (
-				<div className='fixed top-4 right-4 z-50 bg-[#1A1815] text-white px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3 animate-fade-in'>
-					<div className='w-3 h-3 bg-green-500 rounded-full animate-pulse'></div>
-					<div>
-						<p className='font-medium'>Annotated Image Downloaded</p>
-						<p className='text-sm text-gray-300'>Check your Downloads folder to verify bounding boxes</p>
-					</div>
-				</div>
-			)}
 		</div>
 	);
 }
