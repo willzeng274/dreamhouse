@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
 export const api = {
 	floorplan: {
@@ -97,6 +97,8 @@ export const api = {
 		async updateFloorPlan(data: {
 			objects: any[];
 			boundaries: any[];
+			width?: number;
+			height?: number;
 		}): Promise<{ status: string; message: string }> {
 			console.log("=== UPDATE FLOOR PLAN: Sending to Backend ===");
 			console.log(
@@ -105,6 +107,7 @@ export const api = {
 			);
 			console.log("Objects count:", data.objects?.length || 0);
 			console.log("Boundaries count:", data.boundaries?.length || 0);
+			console.log("Scene resolution:", data.width && data.height ? `${data.width}x${data.height}` : "Not provided");
 			console.log("=========================================");
 
 			const response = await fetch(

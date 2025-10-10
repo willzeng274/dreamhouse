@@ -34,6 +34,8 @@ def convert_to_old_format_and_save():
         converted_boundaries.append(converted_boundary)
     
     converted_data = {
+        "width": data.get("width"),
+        "height": data.get("height"),
         "objects": data.get("objects", []),
         "boundaries": converted_boundaries
     }
@@ -80,10 +82,14 @@ async def extract_objects(floorplan: UploadFile = File(...)):
 async def update_floor_plan(data: dict):
     """
     Receives objects and boundaries data from frontend, adds outdated flag,
-    and saves to data.json
+    and saves to data.json. Also accepts width and height properties for scene resolution.
     """
     # Add outdated flag to the data
     data["outdated"] = False
+    
+    # Log scene resolution if provided
+    if "width" in data and "height" in data:
+        print(f"📐 Scene resolution: {data['width']}x{data['height']}")
     
     # Save to data.json
     with open("./data.json", "w") as f:

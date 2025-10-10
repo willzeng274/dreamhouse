@@ -3,7 +3,7 @@ import asyncio
 import os
 
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://localhost:8001"
 OUTPUT_DIR = "e2e_output_images"
 
 

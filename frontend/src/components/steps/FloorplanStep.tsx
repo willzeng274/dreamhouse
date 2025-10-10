@@ -96,7 +96,7 @@ export default function FloorplanStep({
 				try {
 					const img = new Image();
 					img.crossOrigin = "anonymous";
-					const imageUrl = `http://localhost:8000/static/floorplan_items/${encodeURIComponent(
+					const imageUrl = `http://localhost:8001/static/floorplan_items/${encodeURIComponent(
 						type
 					)}/floorplan_icon.png`;
 					img.src = imageUrl;
@@ -1660,10 +1660,32 @@ export default function FloorplanStep({
 		);
 
 		try {
+			// Calculate max width and height from floorplanBoundaries
+			let maxWidth = 0;
+			let maxHeight = 0;
+			
+			floorplanBoundaries.forEach((boundary) => {
+				if (boundary.bbox_pixels) {
+					maxWidth = Math.max(maxWidth, boundary.bbox_pixels.x2);
+					maxHeight = Math.max(maxHeight, boundary.bbox_pixels.y2);
+				}
+			});
+			
+			// Fallback to image dimensions if no boundaries found
+			if (maxWidth === 0 || maxHeight === 0) {
+				const img = floorplanImageRef.current;
+				maxWidth = img?.width || 0;
+				maxHeight = img?.height || 0;
+			}
+			
+			console.log(`📐 Capturing scene resolution from boundaries: ${maxWidth}x${maxHeight}`);
+
 			// Send the current floor plan data to the backend
 			await updateFloorPlan.mutateAsync({
 				objects: floorplanObjects,
 				boundaries: floorplanBoundaries,
+				width: maxWidth,
+				height: maxHeight,
 			});
 
 			// Proceed to next step after successful update
@@ -1852,7 +1874,7 @@ export default function FloorplanStep({
 							<div className='grid grid-cols-2 gap-4'>
 								{[1, 2, 3, 4, 5].map((modelNum) => {
 									const color = modelColorMap[modelNum];
-									const imageUrl = `http://localhost:8000/static/floorplan_items/${encodeURIComponent(
+									const imageUrl = `http://localhost:8001/static/floorplan_items/${encodeURIComponent(
 										furnitureType
 									)}/variation_${String(
 										modelNum - 1

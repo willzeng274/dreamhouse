@@ -105,7 +105,12 @@ export function useGeneratePhotorealistic() {
 
 export function useUpdateFloorPlan() {
 	return useMutation({
-		mutationFn: async (data: { objects: any[]; boundaries: any[] }) => {
+		mutationFn: async (data: { 
+			objects: any[]; 
+			boundaries: any[];
+			width?: number;
+			height?: number;
+		}) => {
 			return await api.floorplan.updateFloorPlan(data);
 		},
 		onSuccess: (result) => {
