@@ -3,8 +3,11 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { Stage, Layer, Line, Rect, Circle, Text } from "react-konva";
 import Konva from "konva";
-import { Hand, Pencil, Minus, Square, CircleIcon, Eraser, Type, Undo, Redo } from "lucide-react";
+import { Hand, Pencil, Minus, Square, CircleIcon, Eraser, Type, Undo, Redo, HelpCircle } from "lucide-react";
 import { useAppStore } from "@/store/useAppStore";
+import { useGenerateFloorplan } from "@/hooks/useApi";
+import AsciiLoader from "@/components/ui/AsciiLoader";
+import KeyboardShortcuts from "@/components/ui/KeyboardShortcuts";
 
 interface SketchStepProps {
 	onNext: () => void;
@@ -59,6 +62,8 @@ export default function SketchStep({
 }: SketchStepProps) {
 	const stageRef = useRef<Konva.Stage>(null);
 	const setSketchDataUrl = useAppStore((state) => state.setSketchDataUrl);
+	const generateFloorplan = useGenerateFloorplan();
+	const sketchDataUrl = useAppStore((state) => state.sketchDataUrl);
 
 	const [tool, setTool] = useState<
 		"pen" | "eraser" | "hand" | "rectangle" | "circle" | "line" | "text"
@@ -84,6 +89,7 @@ export default function SketchStep({
 	// Eraser cursor tracking
 	const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
 	const [showCursor, setShowCursor] = useState(false);
+	const [showShortcuts, setShowShortcuts] = useState(false);
 
 	// History for undo/redo - initialize with empty state
 	const [history, setHistory] = useState<HistoryState[]>([
@@ -201,18 +207,37 @@ export default function SketchStep({
 	// Keyboard shortcuts
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
+			// Don't trigger shortcuts when typing in input
+			if (showTextInput) return;
+
 			if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
 				e.preventDefault();
 				handleUndo();
 			} else if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.shiftKey && e.key === "z"))) {
 				e.preventDefault();
 				handleRedo();
+			} else if (e.key === "h" || e.key === "H") {
+				setTool("hand");
+			} else if (e.key === "p" || e.key === "P") {
+				setTool("pen");
+			} else if (e.key === "l" || e.key === "L") {
+				setTool("line");
+			} else if (e.key === "r" || e.key === "R") {
+				setTool("rectangle");
+			} else if (e.key === "c" || e.key === "C") {
+				setTool("circle");
+			} else if (e.key === "t" || e.key === "T") {
+				setTool("text");
+			} else if (e.key === "e" || e.key === "E") {
+				setTool("eraser");
+			} else if (e.key === "?") {
+				setShowShortcuts(true);
 			}
 		};
 
 		window.addEventListener("keydown", handleKeyDown);
 		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, [handleUndo, handleRedo]);
+	}, [handleUndo, handleRedo, showTextInput]);
 
 	// Generate grid lines
 	const generateGridLines = () => {
@@ -550,14 +575,26 @@ export default function SketchStep({
 		setSketchData(JSON.stringify(data));
 	}, [lines, shapes, straightLines, texts, stagePos, stageScale]);
 
-	const handleContinue = () => {
+	const handleContinue = async () => {
 		// Save sketch as image to store
 		const stage = stageRef.current;
 		if (stage) {
 			const dataUrl = stage.toDataURL({ pixelRatio: 2 });
 			setSketchDataUrl(dataUrl);
-		}
+			
+			// Generate floorplan from sketch before moving to render step
+			const blob = await fetch(dataUrl).then(res => res.blob());
+			const file = new File([blob], "sketch.png", { type: "image/png" });
+			
+			try {
+				await generateFloorplan.mutateAsync(file);
+				// Only move to next step after successful generation
 		onNext();
+			} catch (error) {
+				console.error("Failed to generate floorplan:", error);
+				// Could show error toast here
+			}
+		}
 	};
 
 	const getAllElementsInOrder = () => {
@@ -645,110 +682,93 @@ export default function SketchStep({
 	};
 
 	return (
-		<div className='h-full flex overflow-hidden'>
-			<div className='flex-1 p-4 flex flex-col min-w-0'>
-				<div className='bg-white rounded-2xl shadow-lg flex-1 flex flex-col overflow-hidden'>
-					<div className='px-6 py-4 border-b border-[#E5E2DA] flex items-center justify-between flex-wrap gap-3'>
-						<h3 className='text-lg font-medium text-[#1A1815]'>
-							Sketch
+		<div className='h-full flex overflow-hidden p-6'>
+			<div className='flex-1 flex flex-col min-w-0'>
+				<div className='rounded-2xl shadow-2xl flex-1 flex flex-col overflow-hidden transition-all duration-300 hover:shadow-3xl' style={{
+					background: 'rgba(255, 255, 255, 0.85)',
+					backdropFilter: 'blur(20px)',
+					border: '1px solid rgba(140, 103, 66, 0.15)',
+					boxShadow: '0 8px 32px rgba(90, 74, 61, 0.12)'
+				}}>
+					<div className='px-8 py-5 flex items-center justify-between flex-wrap gap-3' style={{
+						borderBottom: '1px solid rgba(140, 103, 66, 0.12)'
+					}}>
+						<div className='flex items-center gap-3'>
+							<div className='w-1.5 h-1.5 rounded-full' style={{ background: '#CC7A4A' }} />
+							<h3 className='text-xl font-semibold' style={{ color: '#5A4A3D' }}>
+								Sketch Your Vision
 						</h3>
+						</div>
 						<div className='flex items-center gap-2 flex-wrap'>
 							{/* Drawing Tools */}
-							<div className='flex items-center gap-1 bg-[#F5F3EF] rounded-lg p-1'>
+							<div className='flex items-center gap-0.5 p-0.5 rounded-lg' style={{ background: '#FFFFFF', border: '1px solid #E5DDD0' }}>
+								{[
+									{ id: "hand", icon: Hand, label: "Hand Tool (Pan)" },
+									{ id: "pen", icon: Pencil, label: "Pen Tool (Freehand)" },
+									{ id: "line", icon: Minus, label: "Line Tool (Straight)" },
+									{ id: "rectangle", icon: Square, label: "Rectangle Tool" },
+									{ id: "circle", icon: CircleIcon, label: "Circle Tool" },
+									{ id: "text", icon: Type, label: "Text Tool" },
+									{ id: "eraser", icon: Eraser, label: "Eraser Tool" },
+								].map(({ id, icon: Icon, label }) => (
 								<button
-									onClick={() => setTool("hand")}
-									className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
-										tool === "hand"
-											? "bg-[#1A1815] text-white shadow-sm"
-											: "text-[#6B6862] hover:bg-[#E5E2DA]"
-									}`}
-									title='Hand Tool (Pan)'
-								>
-									<Hand size={16} />
+										key={id}
+										onClick={() => setTool(id as any)}
+										className='px-3 py-2 rounded-md text-sm font-medium transition-all duration-200'
+										style={{
+											background: tool === id ? '#CC7A4A' : 'transparent',
+											color: tool === id ? '#FFFFFF' : '#6B5D4F',
+										}}
+										title={label}
+										onMouseEnter={(e) => {
+											if (tool !== id) {
+												e.currentTarget.style.background = '#FAF8F5';
+											}
+										}}
+										onMouseLeave={(e) => {
+											if (tool !== id) {
+												e.currentTarget.style.background = 'transparent';
+											}
+										}}
+									>
+										<Icon size={16} />
 								</button>
-								<button
-									onClick={() => setTool("pen")}
-									className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
-										tool === "pen"
-											? "bg-[#1A1815] text-white shadow-sm"
-											: "text-[#6B6862] hover:bg-[#E5E2DA]"
-									}`}
-									title='Pen Tool (Freehand)'
-								>
-									<Pencil size={16} />
-								</button>
-								<button
-									onClick={() => setTool("line")}
-									className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
-										tool === "line"
-											? "bg-[#1A1815] text-white shadow-sm"
-											: "text-[#6B6862] hover:bg-[#E5E2DA]"
-									}`}
-									title='Line Tool (Straight)'
-								>
-									<Minus size={16} />
-								</button>
-								<button
-									onClick={() => setTool("rectangle")}
-									className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
-										tool === "rectangle"
-											? "bg-[#1A1815] text-white shadow-sm"
-											: "text-[#6B6862] hover:bg-[#E5E2DA]"
-									}`}
-									title='Rectangle Tool'
-								>
-									<Square size={16} />
-								</button>
-								<button
-									onClick={() => setTool("circle")}
-									className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
-										tool === "circle"
-											? "bg-[#1A1815] text-white shadow-sm"
-											: "text-[#6B6862] hover:bg-[#E5E2DA]"
-									}`}
-									title='Circle Tool'
-								>
-									<CircleIcon size={16} />
-								</button>
-								<button
-									onClick={() => setTool("text")}
-									className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
-										tool === "text"
-											? "bg-[#1A1815] text-white shadow-sm"
-											: "text-[#6B6862] hover:bg-[#E5E2DA]"
-									}`}
-									title='Text Tool'
-								>
-									<Type size={16} />
-								</button>
-								<button
-									onClick={() => setTool("eraser")}
-									className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
-										tool === "eraser"
-											? "bg-[#1A1815] text-white shadow-sm"
-											: "text-[#6B6862] hover:bg-[#E5E2DA]"
-									}`}
-									title='Eraser Tool'
-								>
-									<Eraser size={16} />
-								</button>
+								))}
 							</div>
 
 							{/* Undo/Redo */}
-							<div className='flex items-center gap-1 bg-[#F5F3EF] rounded-lg p-1'>
+							<div className='flex items-center gap-0.5 p-0.5 rounded-lg' style={{ background: '#FFFFFF', border: '1px solid #E5DDD0' }}>
 								<button
 									onClick={handleUndo}
 									disabled={historyIndex <= 0}
-									className='px-3 py-2 rounded text-sm font-medium text-[#6B6862] hover:bg-[#E5E2DA] transition-colors disabled:opacity-30 disabled:cursor-not-allowed'
+									className='px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed'
+									style={{ color: '#6B5D4F' }}
 									title='Undo (Ctrl+Z)'
+									onMouseEnter={(e) => {
+										if (historyIndex > 0) {
+											e.currentTarget.style.background = '#FAF8F5';
+										}
+									}}
+									onMouseLeave={(e) => {
+										e.currentTarget.style.background = 'transparent';
+									}}
 								>
 									<Undo size={16} />
 								</button>
 								<button
 									onClick={handleRedo}
 									disabled={historyIndex >= history.length - 1}
-									className='px-3 py-2 rounded text-sm font-medium text-[#6B6862] hover:bg-[#E5E2DA] transition-colors disabled:opacity-30 disabled:cursor-not-allowed'
+									className='px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed'
+									style={{ color: '#6B5D4F' }}
 									title='Redo (Ctrl+Y)'
+									onMouseEnter={(e) => {
+										if (historyIndex < history.length - 1) {
+											e.currentTarget.style.background = '#FAF8F5';
+										}
+									}}
+									onMouseLeave={(e) => {
+										e.currentTarget.style.background = 'transparent';
+									}}
 								>
 									<Redo size={16} />
 								</button>
@@ -756,8 +776,41 @@ export default function SketchStep({
 
 							{/* Action Buttons */}
 							<button
+								onClick={() => setShowShortcuts(true)}
+								className='p-2 rounded-lg transition-all duration-200'
+								style={{
+									background: '#FFFFFF',
+									color: '#6B5D4F',
+									border: '1px solid #E5DDD0'
+								}}
+								title='Keyboard Shortcuts'
+								onMouseEnter={(e) => {
+									e.currentTarget.style.background = '#FAF8F5';
+									e.currentTarget.style.borderColor = '#D4C7B7';
+								}}
+								onMouseLeave={(e) => {
+									e.currentTarget.style.background = '#FFFFFF';
+									e.currentTarget.style.borderColor = '#E5DDD0';
+								}}
+							>
+								<HelpCircle size={16} />
+							</button>
+							<button
 								onClick={clearCanvas}
-								className='px-4 py-2 rounded-lg text-sm font-medium bg-[#F5F3EF] text-[#6B6862] hover:bg-[#E5E2DA] transition-colors'
+								className='px-5 py-2 rounded-lg text-sm font-medium transition-all duration-200'
+								style={{
+									background: '#FFFFFF',
+									color: '#6B5D4F',
+									border: '1px solid #E5DDD0'
+								}}
+								onMouseEnter={(e) => {
+									e.currentTarget.style.background = '#FAF8F5';
+									e.currentTarget.style.borderColor = '#D4C7B7';
+								}}
+								onMouseLeave={(e) => {
+									e.currentTarget.style.background = '#FFFFFF';
+									e.currentTarget.style.borderColor = '#E5DDD0';
+								}}
 							>
 								Clear
 							</button>
@@ -766,15 +819,50 @@ export default function SketchStep({
 									setStagePos({ x: 0, y: 0 });
 									setStageScale(1);
 								}}
-								className='px-4 py-2 rounded-lg text-sm font-medium bg-[#F5F3EF] text-[#6B6862] hover:bg-[#E5E2DA] transition-colors'
+								className='px-5 py-2 rounded-lg text-sm font-medium transition-all duration-200'
+								style={{
+									background: '#FFFFFF',
+									color: '#6B5D4F',
+									border: '1px solid #E5DDD0'
+								}}
+								onMouseEnter={(e) => {
+									e.currentTarget.style.background = '#FAF8F5';
+									e.currentTarget.style.borderColor = '#D4C7B7';
+								}}
+								onMouseLeave={(e) => {
+									e.currentTarget.style.background = '#FFFFFF';
+									e.currentTarget.style.borderColor = '#E5DDD0';
+								}}
 							>
 								Reset View
 							</button>
 							<button
 								onClick={handleContinue}
-								className='px-6 py-2 rounded-lg text-sm font-medium bg-[#E07B47] text-white hover:bg-[#D06A36] transition-colors'
+								disabled={generateFloorplan.isPending}
+								className='px-8 py-2.5 rounded-lg text-sm font-semibold text-white transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed'
+								style={{
+									background: '#CC7A4A',
+									boxShadow: '0 4px 12px rgba(204, 122, 74, 0.3)'
+								}}
+								onMouseEnter={(e) => {
+									if (!generateFloorplan.isPending) {
+										e.currentTarget.style.background = '#BF7248';
+										e.currentTarget.style.boxShadow = '0 6px 16px rgba(191, 114, 72, 0.35)';
+									}
+								}}
+								onMouseLeave={(e) => {
+									e.currentTarget.style.background = '#CC7A4A';
+									e.currentTarget.style.boxShadow = '0 4px 12px rgba(204, 122, 74, 0.3)';
+								}}
 							>
-								Continue to Refine →
+								{generateFloorplan.isPending ? (
+									<span className='flex items-center gap-2'>
+										<div className='w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin' />
+										Generating...
+									</span>
+								) : (
+									"Continue to Render →"
+								)}
 							</button>
 						</div>
 					</div>
@@ -783,10 +871,87 @@ export default function SketchStep({
 					<div
 						ref={stageContainerRef}
 						id='konva-container'
-						className='flex-1 p-6 bg-white overflow-hidden relative'
+						className='flex-1 overflow-hidden relative'
+						style={{ 
+							background: '#FAF8F5',
+							backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(140, 103, 66, 0.03) 1px, transparent 0)',
+							backgroundSize: '24px 24px'
+						}}
 						onMouseEnter={handleMouseEnter}
 						onMouseLeave={handleMouseLeave}
 					>
+						{/* Floating tool indicator */}
+						<div className='absolute top-6 left-6 px-4 py-2 rounded-lg backdrop-blur-md z-10 transition-all duration-200' style={{
+							background: 'rgba(255, 255, 255, 0.9)',
+							border: '1px solid rgba(140, 103, 66, 0.15)',
+							boxShadow: '0 4px 12px rgba(90, 74, 61, 0.08)'
+						}}>
+							<div className='flex items-center gap-2'>
+								<div className='w-1.5 h-1.5 rounded-full animate-pulse' style={{ background: '#CC7A4A' }} />
+								<span className='text-xs font-medium' style={{ color: '#6B5D4F' }}>
+									{tool === "hand" ? "Pan Mode" : 
+									 tool === "pen" ? "Drawing" :
+									 tool === "line" ? "Straight Line" :
+									 tool === "rectangle" ? "Rectangle" :
+									 tool === "circle" ? "Circle" :
+									 tool === "text" ? "Add Text" :
+									 "Erasing"}
+								</span>
+								<span className='text-[10px] px-1.5 py-0.5 rounded font-mono font-semibold' style={{
+									background: 'rgba(204, 122, 74, 0.1)',
+									color: '#CC7A4A'
+								}}>
+									{tool === "hand" ? "H" : 
+									 tool === "pen" ? "P" :
+									 tool === "line" ? "L" :
+									 tool === "rectangle" ? "R" :
+									 tool === "circle" ? "C" :
+									 tool === "text" ? "T" : "E"}
+								</span>
+							</div>
+						</div>
+
+						{/* Element counter */}
+						{(lines.length > 0 || shapes.length > 0 || straightLines.length > 0 || texts.length > 0) && (
+							<div className='absolute top-6 right-6 px-4 py-2 rounded-lg backdrop-blur-md z-10' style={{
+								background: 'rgba(255, 255, 255, 0.9)',
+								border: '1px solid rgba(140, 103, 66, 0.15)',
+								boxShadow: '0 4px 12px rgba(90, 74, 61, 0.08)'
+							}}>
+								<span className='text-xs font-medium' style={{ color: '#6B5D4F' }}>
+									{lines.length + shapes.length + straightLines.length + texts.length} elements
+								</span>
+							</div>
+						)}
+
+						{/* Empty state - helpful prompt */}
+						{lines.length === 0 && shapes.length === 0 && straightLines.length === 0 && texts.length === 0 && (
+							<div className='absolute inset-0 flex items-center justify-center pointer-events-none z-0'>
+								<div className='text-center space-y-4 max-w-md'>
+									<div className='text-6xl mb-4 opacity-20'>✏️</div>
+									<h4 className='text-xl font-semibold opacity-40' style={{ color: '#5A4A3D' }}>
+										Start Sketching
+									</h4>
+									<p className='text-sm opacity-30' style={{ color: '#8C6742' }}>
+										Use the pen tool to draw your floorplan, or press <kbd className='px-2 py-1 rounded text-xs font-mono' style={{
+											background: 'rgba(204, 122, 74, 0.1)',
+											border: '1px solid rgba(204, 122, 74, 0.2)',
+											color: '#CC7A4A'
+										}}>?</kbd> for shortcuts
+									</p>
+								</div>
+							</div>
+						)}
+
+						{generateFloorplan.isPending && (
+							<div className='absolute inset-0 z-50 bg-white/95 backdrop-blur-sm'>
+								<AsciiLoader 
+									message="GENERATING" 
+									subMessage="Converting sketch to floorplan..."
+									isComplete={generateFloorplan.isSuccess}
+								/>
+							</div>
+						)}
 						<Stage
 							ref={stageRef}
 							width={containerSize.width}
@@ -953,25 +1118,39 @@ export default function SketchStep({
 						{/* Custom Eraser Cursor */}
 						{tool === "eraser" && showCursor && (
 							<div
-								className='pointer-events-none absolute rounded-full border-2 border-[#E07B47] bg-[#E07B47]/20 z-50'
+								className='pointer-events-none absolute rounded-full z-50 transition-all duration-100'
 								style={{
 									left: cursorPos.x - (eraserSize * stageScale) / 2,
 									top: cursorPos.y - (eraserSize * stageScale) / 2,
 									width: eraserSize * stageScale,
 									height: eraserSize * stageScale,
+									border: '2px solid #CC7A4A',
+									background: 'rgba(204, 122, 74, 0.15)',
+									boxShadow: '0 0 0 1px rgba(204, 122, 74, 0.3)',
 								}}
-							/>
+							>
+								<div className='absolute inset-0 rounded-full' style={{
+									background: 'radial-gradient(circle, rgba(204, 122, 74, 0.2) 0%, transparent 70%)'
+								}} />
+							</div>
 						)}
 
 						{/* Text Input Modal */}
 						{showTextInput && (
 							<div
-								className='absolute bg-white rounded-xl p-4 shadow-2xl z-50 border border-[#E5E2DA]'
+								className='absolute rounded-xl p-5 shadow-2xl z-50'
 								style={{
 									left: textInputPos.x,
 									top: textInputPos.y,
+									background: 'rgba(255, 255, 255, 0.95)',
+									backdropFilter: 'blur(20px)',
+									border: '1px solid rgba(140, 103, 66, 0.15)',
+									boxShadow: '0 8px 32px rgba(90, 74, 61, 0.2)'
 								}}
 							>
+								<label className='block text-xs font-semibold mb-2' style={{ color: '#5A4A3D' }}>
+									Add Text
+								</label>
 								<input
 									ref={textInputRef}
 									type='text'
@@ -986,23 +1165,57 @@ export default function SketchStep({
 										}
 									}}
 									placeholder='Enter text...'
-									className='w-64 bg-[#F5F3EF] border-0 rounded-lg px-3 py-2 text-sm text-[#1A1815] placeholder-[#6B6862] focus:outline-none focus:ring-0'
+									className='w-72 px-4 py-2.5 text-sm rounded-lg border transition-all duration-200 focus:outline-none'
+									style={{
+										background: '#FAF8F5',
+										color: '#5A4A3D',
+										borderColor: '#E5DDD0'
+									}}
+									onFocus={(e) => {
+										e.currentTarget.style.borderColor = '#CC7A4A';
+										e.currentTarget.style.boxShadow = '0 0 0 3px rgba(204, 122, 74, 0.1)';
+									}}
+									onBlur={(e) => {
+										e.currentTarget.style.borderColor = '#E5DDD0';
+										e.currentTarget.style.boxShadow = 'none';
+									}}
 								/>
-								<div className='flex gap-2 mt-3'>
+								<div className='flex gap-2 mt-4'>
 									<button
 										onClick={handleAddText}
-										className='flex-1 px-4 py-2 bg-[#1A1815] text-white text-sm font-medium rounded-lg hover:bg-[#2A2825] transition-colors'
+										className='flex-1 px-4 py-2 text-white text-sm font-semibold rounded-lg transition-all duration-200'
+										style={{
+											background: '#CC7A4A',
+											boxShadow: '0 2px 8px rgba(204, 122, 74, 0.3)'
+										}}
+										onMouseEnter={(e) => {
+											e.currentTarget.style.background = '#BF7248';
+										}}
+										onMouseLeave={(e) => {
+											e.currentTarget.style.background = '#CC7A4A';
+										}}
 									>
-										Add
+										Add <kbd className='ml-1 text-xs opacity-60'>↵</kbd>
 									</button>
 									<button
 										onClick={() => {
 											setShowTextInput(false);
 											setTextInputValue("");
 										}}
-										className='px-4 py-2 bg-[#F5F3EF] text-[#6B6862] text-sm font-medium rounded-lg hover:bg-[#E5E2DA] transition-colors'
+										className='px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200'
+										style={{
+											background: '#FFFFFF',
+											color: '#6B5D4F',
+											border: '1px solid #E5DDD0'
+										}}
+										onMouseEnter={(e) => {
+											e.currentTarget.style.background = '#FAF8F5';
+										}}
+										onMouseLeave={(e) => {
+											e.currentTarget.style.background = '#FFFFFF';
+										}}
 									>
-										Cancel
+										Cancel <kbd className='ml-1 text-xs opacity-60'>Esc</kbd>
 									</button>
 								</div>
 							</div>
@@ -1010,6 +1223,9 @@ export default function SketchStep({
 					</div>
 				</div>
 			</div>
+			
+			{/* Keyboard Shortcuts Modal */}
+			<KeyboardShortcuts isOpen={showShortcuts} onClose={() => setShowShortcuts(false)} />
 		</div>
 	);
 }

@@ -22,9 +22,13 @@
 	--shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
 }
 
+.shadow-3xl {
+	box-shadow: 0 12px 48px rgba(90, 74, 61, 0.18);
+}
+
 nextjs-portal {
 	display: none;
-  }
+}
 
 /* Base Styles */
 * {
@@ -32,54 +36,117 @@ nextjs-portal {
 	-moz-osx-font-smoothing: grayscale;
 }
 
+html {
+	scroll-behavior: smooth;
+}
+
 /* Focus States */
 *:focus-visible {
-	outline: 2px solid var(--color-accent-primary);
+	outline: 2px solid #CC7A4A;
 	outline-offset: 2px;
 }
 
 /* Scrollbar Styling */
 ::-webkit-scrollbar {
-	width: 10px;
-	height: 10px;
+	width: 8px;
+	height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-	background: var(--color-bg-secondary);
+	background: #FAF8F5;
 }
 
 ::-webkit-scrollbar-thumb {
-	background: var(--color-border-medium);
-	border-radius: 5px;
+	background: #D4C7B7;
+	border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-	background: var(--color-text-secondary);
+	background: #BF7248;
 }
 
 /* Animations */
 @keyframes slide-in-right {
 	from {
 		transform: translateX(100%);
+		opacity: 0;
 	}
 	to {
 		transform: translateX(0);
+		opacity: 1;
 	}
 }
 
 .animate-slide-in-right {
-	animation: slide-in-right 0.3s ease-out;
+	animation: slide-in-right 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @keyframes fade-in {
 	from {
 		opacity: 0;
+		transform: translateY(10px);
 	}
 	to {
 		opacity: 1;
+		transform: translateY(0);
 	}
 }
 
 .animate-fade-in {
-	animation: fade-in 0.2s ease-out;
+	animation: fade-in 0.3s ease-out;
+}
+
+@keyframes gradient-shift {
+	0%, 100% {
+		background-position: 0% 50%;
+	}
+	50% {
+		background-position: 100% 50%;
+	}
+}
+
+.animate-gradient {
+	background-size: 200% 200%;
+	animation: gradient-shift 3s ease infinite;
+}
+
+@keyframes float {
+	0%, 100% {
+		transform: translateY(0px);
+	}
+	50% {
+		transform: translateY(-10px);
+	}
+}
+
+.animate-float {
+	animation: float 3s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+	0%, 100% {
+		box-shadow: 0 0 20px rgba(204, 122, 74, 0.2);
+	}
+	50% {
+		box-shadow: 0 0 30px rgba(204, 122, 74, 0.3);
+	}
+}
+
+.animate-pulse-glow {
+	animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Glass morphism effect */
+.glass {
+	background: rgba(255, 255, 255, 0.85);
+	backdrop-filter: blur(20px);
+	-webkit-backdrop-filter: blur(20px);
+	border: 1px solid rgba(140, 103, 66, 0.15);
+}
+
+/* Smooth transitions */
+* {
+	transition-property: background-color, border-color, color, fill, stroke;
+	transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+	transition-duration: 150ms;
 }
