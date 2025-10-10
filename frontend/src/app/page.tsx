@@ -4,6 +4,8 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import StepIndicator from "@/components/StepIndicator";
 import SketchStep from "@/components/steps/SketchStep";
+import RefineStep from "@/components/steps/RefineStep";
+import FloorplanStep from "@/components/steps/FloorplanStep";
 import RenderStep from "@/components/steps/RenderStep";
 import ViewStep from "@/components/steps/ViewStep";
 import AnimatedBackground from "@/components/ui/AnimatedBackground";
@@ -14,12 +16,14 @@ export default function Home() {
 
 	const steps = [
 		{ number: 1, title: "Sketch", component: SketchStep },
-		{ number: 2, title: "Render", component: RenderStep },
-		{ number: 3, title: "3D View", component: ViewStep },
+		{ number: 2, title: "Refine", component: RefineStep },
+		{ number: 3, title: "Floorplan", component: FloorplanStep },
+		{ number: 4, title: "Render", component: RenderStep },
+		{ number: 5, title: "Unity", component: ViewStep },
 	];
 
 	const handleNext = () => {
-		if (currentStep < 3) {
+		if (currentStep < 5) {
 			setCurrentStep(currentStep + 1);
 		}
 	};
@@ -32,6 +36,10 @@ export default function Home() {
 
 	const handleStepClick = (step: number) => {
 		setCurrentStep(step);
+	};
+
+	const handleQuickExport = (targetStep: number) => {
+		setCurrentStep(targetStep);
 	};
 
 	const CurrentStepComponent = steps[currentStep - 1].component;
@@ -109,6 +117,7 @@ export default function Home() {
 							currentStep={currentStep}
 							sketchData={sketchData}
 							setSketchData={setSketchData}
+							onQuickExport={handleQuickExport}
 						/>
 					</motion.div>
 				</AnimatePresence>

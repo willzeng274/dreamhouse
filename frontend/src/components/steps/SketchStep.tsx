@@ -5,9 +5,10 @@ import { Stage, Layer, Line, Rect, Circle, Text } from "react-konva";
 import Konva from "konva";
 import { Hand, Pencil, Minus, Square, CircleIcon, Eraser, Type, Undo, Redo, HelpCircle } from "lucide-react";
 import { useAppStore } from "@/store/useAppStore";
-import { useGenerateFloorplan } from "@/hooks/useApi";
+import { useGenerateFloorplan, useExtractObjects, useGeneratePhotorealistic, useExportScene } from "@/hooks/useApi";
 import AsciiLoader from "@/components/ui/AsciiLoader";
 import KeyboardShortcuts from "@/components/ui/KeyboardShortcuts";
+import { Zap } from "lucide-react";
 
 interface SketchStepProps {
 	onNext: () => void;
@@ -15,6 +16,7 @@ interface SketchStepProps {
 	currentStep: number;
 	sketchData: string | null;
 	setSketchData: (data: string) => void;
+	onQuickExport?: (step: number) => void;
 }
 
 interface LineData {
@@ -59,11 +61,23 @@ export default function SketchStep({
 	onNext,
 	sketchData,
 	setSketchData,
+	onQuickExport,
 }: SketchStepProps) {
 	const stageRef = useRef<Konva.Stage>(null);
 	const setSketchDataUrl = useAppStore((state) => state.setSketchDataUrl);
+	const setFloorplanBlob = useAppStore((state) => state.setFloorplanBlob);
+	const setFloorplanDataUrl = useAppStore((state) => state.setFloorplanDataUrl);
+	const blobToDataUrl = useAppStore((state) => state.blobToDataUrl);
+	
 	const generateFloorplan = useGenerateFloorplan();
+	const extractObjects = useExtractObjects();
+	const generatePhotorealistic = useGeneratePhotorealistic();
+	const exportScene = useExportScene();
+	
 	const sketchDataUrl = useAppStore((state) => state.sketchDataUrl);
+	const floorplanObjects = useAppStore((state) => state.floorplanObjects);
+	
+	const [isQuickExporting, setIsQuickExporting] = useState(false);
 
 	const [tool, setTool] = useState<
 		"pen" | "eraser" | "hand" | "rectangle" | "circle" | "line" | "text"
@@ -581,19 +595,45 @@ export default function SketchStep({
 		if (stage) {
 			const dataUrl = stage.toDataURL({ pixelRatio: 2 });
 			setSketchDataUrl(dataUrl);
-			
-			// Generate floorplan from sketch before moving to render step
+			// Move to next step (Refine)
+			onNext();
+		}
+	};
+
+	const handleQuickExport = async () => {
+		const stage = stageRef.current;
+		if (!stage || !onQuickExport) return;
+
+		setIsQuickExporting(true);
+
+		try {
+			// 1. Save sketch
+			const dataUrl = stage.toDataURL({ pixelRatio: 2 });
+			setSketchDataUrl(dataUrl);
 			const blob = await fetch(dataUrl).then(res => res.blob());
-			const file = new File([blob], "sketch.png", { type: "image/png" });
+			const sketchFile = new File([blob], "sketch.png", { type: "image/png" });
+
+			// 2. Generate floorplan
+			const floorplanBlob = await generateFloorplan.mutateAsync(sketchFile);
+			const floorplanDataUrl = await blobToDataUrl(floorplanBlob);
+			setFloorplanBlob(floorplanBlob);
+			setFloorplanDataUrl(floorplanDataUrl);
 			
-			try {
-				await generateFloorplan.mutateAsync(file);
-				// Only move to next step after successful generation
-		onNext();
-			} catch (error) {
-				console.error("Failed to generate floorplan:", error);
-				// Could show error toast here
-			}
+			// 3. Extract objects in parallel with render generation
+			const floorplanFile = new File([floorplanBlob], "floorplan.png", { type: "image/png" });
+			const [extractResult] = await Promise.all([
+				extractObjects.mutateAsync(floorplanFile),
+				generatePhotorealistic.mutateAsync(floorplanFile),
+			]);
+
+			// 4. Export scene to Unity format
+			await exportScene.mutateAsync(extractResult.objects);
+
+			// 5. Jump to Unity view (step 5)
+			onQuickExport(5);
+		} catch (error) {
+			console.error("Quick export failed:", error);
+			setIsQuickExporting(false);
 		}
 	};
 
@@ -836,16 +876,52 @@ export default function SketchStep({
 							>
 								Reset View
 							</button>
+							
+							<div className='w-px h-6' style={{ background: '#E5DDD0' }} />
+							
+							<div className='relative'>
+								<button
+									onClick={handleQuickExport}
+									disabled={isQuickExporting}
+									className='px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 relative overflow-hidden group'
+									style={{
+										background: 'rgba(204, 122, 74, 0.1)',
+										color: '#CC7A4A',
+										border: '1px solid rgba(204, 122, 74, 0.3)'
+									}}
+									title='Skip all intermediate steps and export directly to Unity'
+									onMouseEnter={(e) => {
+										if (!isQuickExporting) {
+											e.currentTarget.style.background = 'rgba(204, 122, 74, 0.15)';
+											e.currentTarget.style.borderColor = 'rgba(204, 122, 74, 0.5)';
+										}
+									}}
+									onMouseLeave={(e) => {
+										e.currentTarget.style.background = 'rgba(204, 122, 74, 0.1)';
+										e.currentTarget.style.borderColor = 'rgba(204, 122, 74, 0.3)';
+									}}
+								>
+									<Zap size={16} className='group-hover:animate-pulse' />
+									<span>Quick Export</span>
+								</button>
+								<div className='absolute -top-2 -right-2 px-2 py-0.5 rounded-full text-[10px] font-bold pointer-events-none' style={{
+									background: '#CC7A4A',
+									color: '#FFFFFF',
+									boxShadow: '0 2px 4px rgba(204, 122, 74, 0.3)'
+								}}>
+									FAST
+								</div>
+							</div>
 							<button
 								onClick={handleContinue}
-								disabled={generateFloorplan.isPending}
+								disabled={isQuickExporting}
 								className='px-8 py-2.5 rounded-lg text-sm font-semibold text-white transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed'
 								style={{
 									background: '#CC7A4A',
 									boxShadow: '0 4px 12px rgba(204, 122, 74, 0.3)'
 								}}
 								onMouseEnter={(e) => {
-									if (!generateFloorplan.isPending) {
+									if (!isQuickExporting) {
 										e.currentTarget.style.background = '#BF7248';
 										e.currentTarget.style.boxShadow = '0 6px 16px rgba(191, 114, 72, 0.35)';
 									}
@@ -855,14 +931,7 @@ export default function SketchStep({
 									e.currentTarget.style.boxShadow = '0 4px 12px rgba(204, 122, 74, 0.3)';
 								}}
 							>
-								{generateFloorplan.isPending ? (
-									<span className='flex items-center gap-2'>
-										<div className='w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin' />
-										Generating...
-									</span>
-								) : (
-									"Continue to Render →"
-								)}
+								Continue to Refine →
 							</button>
 						</div>
 					</div>
@@ -943,12 +1012,12 @@ export default function SketchStep({
 							</div>
 						)}
 
-						{generateFloorplan.isPending && (
+						{isQuickExporting && (
 							<div className='absolute inset-0 z-50 bg-white/95 backdrop-blur-sm'>
 								<AsciiLoader 
-									message="GENERATING" 
-									subMessage="Converting sketch to floorplan..."
-									isComplete={generateFloorplan.isSuccess}
+									message="QUICK EXPORT" 
+									subMessage="Processing all steps for Unity export..."
+									isComplete={exportScene.isSuccess}
 								/>
 							</div>
 						)}

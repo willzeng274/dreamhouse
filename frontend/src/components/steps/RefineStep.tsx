@@ -306,36 +306,68 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 	};
 
 	return (
-		<div className='h-full flex overflow-hidden'>
-			<div className='flex-1 p-4 flex flex-col min-w-0'>
-				<div className='bg-white rounded-2xl shadow-lg flex-1 flex flex-col overflow-hidden'>
-					<div className='px-6 py-4 border-b border-[#E5E2DA] flex items-center justify-between'>
+		<div className='h-full flex overflow-hidden p-6'>
+			<div className='flex-1 flex flex-col min-w-0'>
+				<div className='rounded-2xl shadow-2xl flex-1 flex flex-col overflow-hidden transition-all duration-300 hover:shadow-3xl' style={{
+					background: 'rgba(255, 255, 255, 0.85)',
+					backdropFilter: 'blur(20px)',
+					border: '1px solid rgba(140, 103, 66, 0.15)',
+					boxShadow: '0 8px 32px rgba(90, 74, 61, 0.12)'
+				}}>
+					<div className='px-8 py-5 border-b flex items-center justify-between' style={{
+						borderBottom: '1px solid rgba(140, 103, 66, 0.12)'
+					}}>
 						<div className='flex items-center gap-4'>
-							<h3 className='text-lg font-medium text-[#1A1815]'>
-								{isGenerating
-									? "Generating Floorplan..."
-									: "Refine & Annotate"}
-							</h3>
+							<div className='flex items-center gap-3'>
+								<div className='w-1.5 h-1.5 rounded-full' style={{ background: '#CC7A4A' }} />
+								<h3 className='text-xl font-semibold' style={{ color: '#5A4A3D' }}>
+									{isGenerating
+										? "Generating Floorplan..."
+										: "Refine & Annotate"}
+								</h3>
+							</div>
 							{!isGenerating && floorplanDataUrl && (
-								<div className='flex items-center gap-1 bg-[#F5F3EF] rounded-lg p-1'>
+								<div className='flex items-center gap-0.5 p-0.5 rounded-lg' style={{ background: '#FFFFFF', border: '1px solid #E5DDD0' }}>
 									<button
 										onClick={handleZoomOut}
-										className='px-3 py-1 rounded text-sm font-medium text-[#6B6862] hover:bg-white transition-colors'
+										className='px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200'
+										style={{ color: '#6B5D4F' }}
+										onMouseEnter={(e) => {
+											e.currentTarget.style.background = '#FAF8F5';
+										}}
+										onMouseLeave={(e) => {
+											e.currentTarget.style.background = 'transparent';
+										}}
 									>
 										−
 									</button>
-									<span className='px-2 text-sm text-[#6B6862] min-w-[60px] text-center'>
+									<span className='px-3 text-sm font-medium min-w-[60px] text-center' style={{ color: '#5A4A3D' }}>
 										{Math.round(transform.scale * 100)}%
 									</span>
 									<button
 										onClick={handleZoomIn}
-										className='px-3 py-1 rounded text-sm font-medium text-[#6B6862] hover:bg-white transition-colors'
+										className='px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200'
+										style={{ color: '#6B5D4F' }}
+										onMouseEnter={(e) => {
+											e.currentTarget.style.background = '#FAF8F5';
+										}}
+										onMouseLeave={(e) => {
+											e.currentTarget.style.background = 'transparent';
+										}}
 									>
 										+
 									</button>
+									<div className='w-px h-4 mx-1' style={{ background: '#E5DDD0' }} />
 									<button
 										onClick={handleResetZoom}
-										className='px-3 py-1 rounded text-xs font-medium text-[#6B6862] hover:bg-white transition-colors ml-1'
+										className='px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200'
+										style={{ color: '#6B5D4F' }}
+										onMouseEnter={(e) => {
+											e.currentTarget.style.background = '#FAF8F5';
+										}}
+										onMouseLeave={(e) => {
+											e.currentTarget.style.background = 'transparent';
+										}}
 									>
 										Reset
 									</button>
@@ -348,38 +380,68 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
                                     onClick={() => setIsHighlighting(!isHighlighting)}
                                     title='Highlighter'
                                     aria-label='Highlighter'
-                                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center ${
-                                        isHighlighting
-                                            ? "bg-green-600 text-white"
-                                            : "bg-[#F5F3EF] text-[#6B6862] hover:bg-[#E5E2DA]"
-                                    }`}
+                                    className='px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2'
+									style={{
+										background: isHighlighting ? '#10B981' : '#FFFFFF',
+										color: isHighlighting ? '#FFFFFF' : '#6B5D4F',
+										border: isHighlighting ? 'none' : '1px solid #E5DDD0',
+										boxShadow: isHighlighting ? '0 2px 8px rgba(16, 185, 129, 0.3)' : 'none'
+									}}
                                 >
                                     <Highlighter size={16} />
+									{isHighlighting && <span>Highlighting</span>}
                                 </button>
 								{highlighterStrokes.length > 0 && (
 									<button
 										onClick={handleClearHighlighter}
-										className='px-4 py-2 rounded-lg text-sm font-medium bg-[#F5F3EF] text-[#6B6862] hover:bg-[#E5E2DA] transition-colors'
+										className='px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200'
+										style={{
+											background: '#FFFFFF',
+											color: '#6B5D4F',
+											border: '1px solid #E5DDD0'
+										}}
 									>
-										Clear
+										Clear Highlights
 									</button>
 								)}
 								<button
 									onClick={handleRegenerate}
 									disabled={reviseFloorplan.isPending}
-									className='px-4 py-2 rounded-lg text-sm font-medium bg-[#F5F3EF] text-[#6B6862] hover:bg-[#E5E2DA] transition-colors disabled:opacity-50'
+									className='px-5 py-2 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50'
+									style={{
+										background: '#FFFFFF',
+										color: '#6B5D4F',
+										border: '1px solid #E5DDD0'
+									}}
 								>
 									{reviseFloorplan.isPending ? "Applying..." : "Apply Changes"}
 								</button>
 								<button
 									onClick={onPrevious}
-									className='px-4 py-2 rounded-lg text-sm font-medium bg-[#F5F3EF] text-[#6B6862] hover:bg-[#E5E2DA] transition-colors'
+									className='px-5 py-2 rounded-lg text-sm font-medium transition-all duration-200'
+									style={{
+										background: '#FFFFFF',
+										color: '#6B5D4F',
+										border: '1px solid #E5DDD0'
+									}}
 								>
 									← Back
 								</button>
 								<button
 									onClick={onNext}
-									className='px-6 py-2 rounded-lg text-sm font-medium bg-[#E07B47] text-white hover:bg-[#D06A36] transition-colors'
+									className='px-8 py-2.5 rounded-lg text-sm font-semibold text-white transition-all duration-200'
+									style={{
+										background: '#CC7A4A',
+										boxShadow: '0 4px 12px rgba(204, 122, 74, 0.3)'
+									}}
+									onMouseEnter={(e) => {
+										e.currentTarget.style.background = '#BF7248';
+										e.currentTarget.style.boxShadow = '0 6px 16px rgba(191, 114, 72, 0.35)';
+									}}
+									onMouseLeave={(e) => {
+										e.currentTarget.style.background = '#CC7A4A';
+										e.currentTarget.style.boxShadow = '0 4px 12px rgba(204, 122, 74, 0.3)';
+									}}
 								>
 									Continue to Floorplan →
 								</button>
@@ -387,13 +449,22 @@ export default function RefineStep({ onNext, onPrevious }: RefineStepProps) {
 						)}
 					</div>
 
-					<div className='flex-1 flex items-center justify-center bg-[#F5F3EF] overflow-hidden'>
+					<div className='flex-1 flex items-center justify-center overflow-hidden' style={{
+						background: '#FAF8F5',
+						backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(140, 103, 66, 0.03) 1px, transparent 0)',
+						backgroundSize: '24px 24px'
+					}}>
                         {isGenerating ? (
-							<div className='text-center space-y-4'>
-								<div className='w-16 h-16 border-4 border-[#E5E2DA] border-t-[#E07B47] rounded-full animate-spin mx-auto'></div>
-								<p className='text-[#6B6862] text-sm'>
-									Generating floorplan from your sketch...
-								</p>
+							<div className='text-center space-y-6'>
+								<div className='relative w-16 h-16 mx-auto'>
+									<div className='absolute inset-0 border-3 rounded-full' style={{ borderColor: '#E5DDD0' }}></div>
+									<div className='absolute inset-0 border-3 border-transparent rounded-full animate-spin' style={{ borderTopColor: '#CC7A4A' }}></div>
+								</div>
+								<div className='space-y-2'>
+									<p className='text-lg font-semibold' style={{ color: '#5A4A3D' }}>
+										Generating floorplan from your sketch...
+									</p>
+								</div>
 							</div>
 						) : floorplanDataUrl ? (
 							<div
